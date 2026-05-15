@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "gitnexus": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "--package",
+        "frontend-nexus@latest",
+        "gitnexus",
+        "mcp",
+        "--db",
+        ".gitnexus/gitnexus.sqlite"
+      ]
+    }
+  }
+}
