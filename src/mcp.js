@@ -17,6 +17,7 @@ function jsonContent(value) {
 }
 
 function compactNode(node) {
+  const meta = node.properties?.description ? JSON.parse(node.properties.description) : {};
   return {
     id: node.id,
     type: node.label,
@@ -24,7 +25,11 @@ function compactNode(node) {
     filePath: node.properties?.filePath,
     startLine: node.properties?.startLine,
     endLine: node.properties?.endLine,
-    meta: node.properties?.description ? JSON.parse(node.properties.description) : {},
+    kind: node.properties?.kind ?? meta.kind,
+    text: node.properties?.text ?? meta.text,
+    reason: node.properties?.reason ?? meta.reason,
+    ownerId: node.properties?.ownerId ?? meta.ownerId,
+    meta,
   };
 }
 
@@ -64,7 +69,7 @@ function graphSlice(graph, symbolOrId, limit) {
 
 function callChain(graph, from, depth, limit) {
   const seeds = findNodes(graph, from, 10);
-  const allowed = new Set(['CALLS', 'RENDERS', 'HANDLES']);
+  const allowed = new Set(['CALLS', 'RENDERS', 'HANDLES', 'ROUTES_TO', 'USES_STORE', 'MIXES_IN']);
   const seenNodes = new Set(seeds.map((node) => node.id));
   const seenEdges = [];
   let frontier = seeds.map((node) => node.id);
@@ -84,6 +89,83 @@ function callChain(graph, from, depth, limit) {
   return {
     nodes: graph.nodes.filter((node) => seenNodes.has(node.id)),
     edges: seenEdges,
+  };
+}
+
+function unresolvedNodes(graph, kind) {
+  return graph.nodes.filter((node) => {
+    if (node.label !== 'UnresolvedReference') return false;
+    return !kind || node.properties?.kind === kind;
+  });
+}
+
+function unresolvedReport(graph, kind, limit) {
+  const nodes = unresolvedNodes(graph, kind);
+  const byKind = {};
+  for (const node of nodes) {
+    const k = node.properties?.kind ?? 'unknown';
+    byKind[k] = (byKind[k] ?? 0) + 1;
+  }
+  return {
+    total: nodes.length,
+    byKind,
+    unresolved: nodes.slice(0, limit).map(compactNode),
+  };
+}
+
+function relatedUnresolved(graph, impactedIds, seedFiles, limit = 50) {
+  const ownerIds = new Set(impactedIds);
+  const files = new Set(seedFiles.filter(Boolean));
+  const viaEdge = new Set(
+    graph.relationships
+      .filter((edge) => edge.type === 'HAS_UNRESOLVED' && ownerIds.has(edge.sourceId))
+      .map((edge) => edge.targetId),
+  );
+  return graph.nodes
+    .filter((node) => {
+      if (node.label !== 'UnresolvedReference') return false;
+      return viaEdge.has(node.id) || ownerIds.has(node.properties?.ownerId) || files.has(node.properties?.filePath);
+    })
+    .slice(0, limit)
+    .map(compactNode);
+}
+
+function impactRadius(graph, symbolOrId, depth, limit) {
+  const seeds = findNodes(graph, symbolOrId, 10);
+  const allowed = new Set(['CALLS', 'RENDERS', 'HANDLES', 'ROUTES_TO', 'USES_STORE', 'MIXES_IN', 'IMPORTS', 'DEFINES']);
+  const seenNodes = new Set(seeds.map((node) => node.id));
+  const seenEdges = [];
+  let frontier = seeds.map((node) => node.id);
+
+  for (let i = 0; i < depth && frontier.length && seenEdges.length < limit; i++) {
+    const next = [];
+    for (const edge of graph.relationships) {
+      if (!allowed.has(edge.type) || !frontier.includes(edge.targetId)) continue;
+      seenEdges.push(edge);
+      if (!seenNodes.has(edge.sourceId)) {
+        seenNodes.add(edge.sourceId);
+        next.push(edge.sourceId);
+      }
+      if (seenEdges.length >= limit) break;
+    }
+    frontier = next;
+  }
+
+  const impactedNodes = graph.nodes.filter((node) => seenNodes.has(node.id));
+  const unresolved = relatedUnresolved(
+    graph,
+    seenNodes,
+    impactedNodes.map((node) => node.properties?.filePath),
+  );
+  return {
+    confidence: unresolved.length ? 'partial' : 'complete',
+    seeds: seeds.map(compactNode),
+    nodes: impactedNodes.map(compactNode),
+    edges: seenEdges.map(compactEdge),
+    unresolvedBlockers: unresolved,
+    note: unresolved.length
+      ? 'Impact radius may be incomplete. Inspect unresolvedBlockers before treating empty or small impact as safe.'
+      : 'No unresolved blockers were found near this impact slice.',
   };
 }
 
@@ -197,6 +279,28 @@ export async function runMcpServer(lbugPath) {
         edges: chain.edges.map(compactEdge),
       });
     },
+  );
+
+  server.tool(
+    'gitnexus_unresolved_report',
+    'Return unresolved imports, route components, template components, store calls, and other graph gaps that may hide impact.',
+    {
+      kind: z.string().optional(),
+      limit: z.number().int().min(1).max(500).default(100),
+    },
+    async ({ kind, limit }) => jsonContent(unresolvedReport(await buildGraph(lbugPath), kind, limit)),
+  );
+
+  server.tool(
+    'gitnexus_impact_radius',
+    'Return reverse impact radius for a symbol/node plus unresolved blockers that may hide additional callers or usages.',
+    {
+      symbolOrId: z.string(),
+      depth: z.number().int().min(1).max(12).default(4),
+      limit: z.number().int().min(1).max(1000).default(300),
+    },
+    async ({ symbolOrId, depth, limit }) =>
+      jsonContent(impactRadius(await buildGraph(lbugPath), symbolOrId, depth, limit)),
   );
 
   server.tool('gitnexus_stats', 'Return graph totals grouped by node and edge type.', {}, async () =>

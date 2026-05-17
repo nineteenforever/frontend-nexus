@@ -1,0 +1,3 @@
+display_name: "GitNexus Vue"
+short_description: "Trace Vue architecture and change impact with a GitNexus graph."
+default_prompt: "Use $gitnexus-vue to inspect Vue components, routes, stores, composables, unresolved blockers, and impact radius before editing."

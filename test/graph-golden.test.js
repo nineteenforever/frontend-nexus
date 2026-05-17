@@ -25,10 +25,16 @@ function hasEdge(edges, type, source, target) {
   return edges.some((edge) => edge.type === type && edge.source === source && edge.target === target);
 }
 
+function findUnresolved(nodes, kind, text) {
+  return nodes.find(
+    (node) => node.type === 'UnresolvedReference' && node.meta?.kind === kind && node.meta?.text === text,
+  );
+}
+
 test('indexes the frontend fixture without TypeScript diagnostics', () => {
   const { graph } = graphRows();
   assert.equal(graph.diagnostics.length, 0);
-  assert.equal(graph.files, 5);
+  assert.equal(graph.files, 8);
 });
 
 test('extracts all expected Vue frontend node types', () => {
@@ -43,6 +49,16 @@ test('extracts all expected Vue frontend node types', () => {
     ['Variable', 'currentUser', 'src/App.vue'],
     ['Variable', 'refreshUser', 'src/App.vue'],
     ['Function', 'emitRefresh', 'src/components/UserCard.vue'],
+    ['Component', 'LegacyPanel', 'src/legacy/LegacyPanel.vue'],
+    ['Variable', 'title', 'src/legacy/LegacyPanel.vue'],
+    ['Variable', 'localCount', 'src/legacy/LegacyPanel.vue'],
+    ['Method', 'displayName', 'src/legacy/LegacyPanel.vue'],
+    ['Method', 'loadUser', 'src/legacy/LegacyPanel.vue'],
+    ['Method', 'saveUser', 'src/legacy/LegacyPanel.vue'],
+    ['Store', 'defaultStore', 'src/legacy/store.js'],
+    ['Method', 'loadUser', 'src/legacy/store.js'],
+    ['Method', 'saveUser', 'src/legacy/store.js'],
+    ['Variable', 'legacyMixin', 'src/legacy/mixin.js'],
   ];
 
   for (const [type, name, filePath] of expected) {
@@ -75,6 +91,51 @@ test('preserves precise component, template, route, composable, and store edges'
   assert.ok(hasEdge(edges, 'CALLS', useUser.id, userStore.id), 'useUser should call useUserStore');
   assert.ok(hasEdge(edges, 'USES_STORE', useUser.id, userStore.id), 'store usage edge should be explicit');
   assert.ok(hasEdge(edges, 'ROUTES_TO', route.id, userCard.id), 'route should point to UserCard');
+});
+
+test('captures Vue 2 options, data, props, and Vuex relationships', () => {
+  const { nodes, edges } = graphRows();
+  const legacy = findNode(nodes, 'Component', 'LegacyPanel', 'src/legacy/LegacyPanel.vue');
+  const title = findNode(nodes, 'Variable', 'title', 'src/legacy/LegacyPanel.vue');
+  const localCount = findNode(nodes, 'Variable', 'localCount', 'src/legacy/LegacyPanel.vue');
+  const displayName = findNode(nodes, 'Method', 'displayName', 'src/legacy/LegacyPanel.vue');
+  const mappedLoad = findNode(nodes, 'Method', 'loadUser', 'src/legacy/LegacyPanel.vue');
+  const saveUser = findNode(nodes, 'Method', 'saveUser', 'src/legacy/LegacyPanel.vue');
+  const store = findNode(nodes, 'Store', 'defaultStore', 'src/legacy/store.js');
+  const storeLoad = findNode(nodes, 'Method', 'loadUser', 'src/legacy/store.js');
+  const storeSave = findNode(nodes, 'Method', 'saveUser', 'src/legacy/store.js');
+  const legacyMixin = findNode(nodes, 'Variable', 'legacyMixin', 'src/legacy/mixin.js');
+
+  for (const node of [legacy, title, localCount, displayName, mappedLoad, saveUser, store, storeLoad, storeSave, legacyMixin]) {
+    assert.ok(node, 'test setup expected all Vue 2 target nodes to exist');
+  }
+
+  assert.ok(hasEdge(edges, 'HANDLES', legacy.id, title.id), 'Vue 2 template should reference prop');
+  assert.ok(hasEdge(edges, 'HANDLES', legacy.id, localCount.id), 'Vue 2 template should reference data');
+  assert.ok(hasEdge(edges, 'HANDLES', legacy.id, displayName.id), 'Vue 2 template should reference computed method');
+  assert.ok(hasEdge(edges, 'HANDLES', legacy.id, mappedLoad.id), 'Vue 2 template should reference mapped action');
+  assert.ok(hasEdge(edges, 'HANDLES', legacy.id, saveUser.id), 'Vue 2 template should reference local method');
+  assert.ok(hasEdge(edges, 'CALLS', mappedLoad.id, storeLoad.id), 'mapActions should point to Vuex action');
+  assert.ok(hasEdge(edges, 'CALLS', saveUser.id, storeSave.id), 'this.$store.dispatch should point to Vuex action');
+  assert.ok(hasEdge(edges, 'CALLS', saveUser.id, mappedLoad.id), 'this.loadUser should point to mapped action');
+  assert.ok(hasEdge(edges, 'USES_STORE', saveUser.id, store.id), 'this.$store.dispatch should use Vuex store');
+  assert.ok(hasEdge(edges, 'MIXES_IN', legacy.id, legacyMixin.id), 'Vue 2 mixins should point to imported mixin');
+});
+
+test('records unresolved graph gaps for agents to treat impact as partial', () => {
+  const { nodes, edges } = graphRows();
+  const missingImport = findUnresolved(nodes, 'import', './missing-mixin');
+  const missingMixin = findUnresolved(nodes, 'mixin', 'MissingMixin');
+  const missingWidget = findUnresolved(nodes, 'template-component', 'missing-widget');
+
+  for (const node of [missingImport, missingMixin, missingWidget]) {
+    assert.ok(node, 'expected unresolved reference node to exist');
+  }
+
+  assert.ok(
+    edges.some((edge) => edge.type === 'HAS_UNRESOLVED' && edge.target === missingMixin.id),
+    'unresolved mixin should be attached to its component owner',
+  );
 });
 
 test('does not invent route edges for non-route path-like objects', () => {

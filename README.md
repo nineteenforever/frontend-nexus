@@ -67,19 +67,25 @@ node src/cli.js analyze --root /path/to/vue-project --name my-vue-app --embeddin
 
 7. Collect graph edges.
    - `DEFINES`: file contains a declaration
-   - `IMPORTS`: static and dynamic imports
+   - `IMPORTS`: static and dynamic imports, including external packages and local assets
    - `CALLS`: TypeScript-resolved function/method/constructor calls
    - `RENDERS`: Vue template component usage
    - `HANDLES`: Vue template expressions referencing script symbols
    - `ROUTES_TO`: Vue Router route objects pointing to components
    - `USES_STORE`: Pinia store usage and store action calls
+   - `MIXES_IN`: Vue 2 `mixins` and `extends`
+   - `HAS_UNRESOLVED`: an owner/file has an actionable unresolved relation
 
 8. Apply Vue/frontend-specific precision rules.
    - `this.foo()` prefers real same-class/same-file method nodes over class nodes
    - `store.action()` links to the Pinia store action method when the store variable is known
+   - Vuex `mapState`, `mapGetters`, `mapActions`, `mapMutations`, `dispatch`, and `commit` are resolved when the store module can be identified
+   - Vue 2 Options API props, data, computed, methods, inline components, mixins, and component names are indexed
+   - `tsconfig`/`jsconfig`, common Vite/Webpack aliases, package self-imports, `src` directory aliases, barrel re-exports, and Vue component casing are resolved before a relation is marked unresolved
    - route objects are recognized only in route-like contexts, not every object with a `path`
    - type-only/interface callback signatures are filtered out from `CALLS`
    - variable initializer calls also get an edge from the variable node, useful for computed/composable chains
+   - third-party packages become `ExternalModule` nodes instead of `UnresolvedReference`
 
 9. Write the graph to LadybugDB.
    - graph database: `.gitnexus/lbug`
@@ -117,6 +123,8 @@ LadybugDB node labels use the existing GitNexus schema where possible:
 | `Store` | `Class` |
 | `Router` | `CodeElement` |
 | `Route` | `Route` |
+| `ExternalModule` | `ExternalModule` |
+| `UnresolvedReference` | `UnresolvedReference` |
 | `Function` | `Function` |
 | `Method` | `Method` |
 | `Class` | `Class` |
@@ -124,6 +132,8 @@ LadybugDB node labels use the existing GitNexus schema where possible:
 | `Variable` | `Variable` |
 
 Frontend-specific node type information is preserved in the `description` JSON as `frontendType`.
+
+`UnresolvedReference` is reserved for actionable graph gaps after local resolvers have been tried. It should not contain ordinary third-party imports.
 
 Relationships are stored in `CodeRelation`:
 
@@ -145,8 +155,13 @@ Analyze and serve:
 ```bash
 gitnexus analyze --root /path/to/vue-project --name my-vue-app --embedding
 gitnexus analyze --root /path/to/vue-project --embedding --provider local --model /models/bge-small-zh-v1.5
+gitnexus analyze --root /path/to/vue-project --diagnostics
 gitnexus serve --port 4747
 ```
+
+`analyze` skips full TypeScript semantic diagnostics by default because they can dominate runtime on large
+projects and do not affect graph generation. Use `--diagnostics` when you explicitly want the TypeScript
+diagnostic report alongside the graph.
 
 Inspect the stored graph:
 
@@ -177,6 +192,8 @@ The MCP server exposes GitNexus-style tool names:
 - `gitnexus_graph`: direct graph slice around a symbol or node id
 - `gitnexus_context`: incoming and outgoing relations for one symbol
 - `gitnexus_call_chain`: breadth-first traversal over `CALLS`, `RENDERS`, and `HANDLES`
+- `gitnexus_unresolved_report`: grouped unresolved references that may hide impact
+- `gitnexus_impact_radius`: reverse impact slice with unresolved blockers and a `complete`/`partial` confidence flag
 - `gitnexus_cypher`: run Cypher-compatible queries against LadybugDB
 - `gitnexus_stats`: node and edge totals
 - `gitnexus_export`: full graph export
@@ -221,9 +238,67 @@ gitnexus analyze \
   --model /absolute/path/to/local/embedding-model
 ```
 
-The local provider uses `@huggingface/transformers` and is configured for offline operation by default:
+The local provider uses `@huggingface/transformers` and is configured for offline operation by default.
+When a model is bundled into the npm package at `models/embedding`, this also works without `--model`:
+
+```bash
+gitnexus analyze --root /path/to/vue-project --embedding
+gitnexus model-info
+```
+
+Model resolution order for `provider=local`:
+
+1. `--model /absolute/model/dir`
+2. `GITNEXUS_LOCAL_EMBEDDING_MODEL`
+3. package-bundled `models/embedding`
+4. `--model-package <npm-package>` or `GITNEXUS_LOCAL_EMBEDDING_MODEL_PACKAGE`
+5. known model packages such as `@frontend-nexus/embedding-model`
+
+A bundled model directory must be a Transformers.js feature-extraction model, typically:
+
+```text
+models/embedding/config.json
+models/embedding/tokenizer.json
+models/embedding/onnx/model_quantized.onnx
+```
+
+For an internal npm release:
+
+```bash
+# copy/export model files before publishing
+mkdir -p models/embedding
+# models/embedding/config.json, tokenizer.json, onnx/model_quantized.onnx, ...
+
+npm publish --registry http://your-internal-npm/
+npm install -g frontend-nexus --registry http://your-internal-npm/
+gitnexus model-info
+gitnexus analyze --root /path/to/vue-project --embedding
+```
+
+If the model is too large for the main package, publish a companion package with this `package.json` field:
+
+```json
+{
+  "name": "@your-scope/gitnexus-embedding-model",
+  "version": "1.0.0",
+  "files": ["models"],
+  "gitnexus": {
+    "embeddingModelPath": "models/embedding"
+  }
+}
+```
+
+Then install and use it:
+
+```bash
+npm install -g frontend-nexus @your-scope/gitnexus-embedding-model --registry http://your-internal-npm/
+gitnexus analyze --root /path/to/vue-project --embedding --model-package @your-scope/gitnexus-embedding-model
+```
+
+Environment variables:
 
 - `GITNEXUS_LOCAL_EMBEDDING_MODEL=/absolute/path/to/local/model`
+- `GITNEXUS_LOCAL_EMBEDDING_MODEL_PACKAGE=@your-scope/gitnexus-embedding-model`
 - `GITNEXUS_TRANSFORMERS_CACHE=/absolute/path/to/cache`
 - `GITNEXUS_ALLOW_REMOTE_MODELS=1` only if you explicitly want to allow network model loading
 

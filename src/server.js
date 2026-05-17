@@ -63,6 +63,9 @@ function nodeQuery(label, includeContent) {
   if (label === 'Route') {
     return `MATCH (n:${quoted}) RETURN n.id AS id, n.name AS name, n.filePath AS filePath, n.responseKeys AS responseKeys, n.errorKeys AS errorKeys, n.middleware AS middleware`;
   }
+  if (label === 'UnresolvedReference') {
+    return `MATCH (n:${quoted}) RETURN n.id AS id, n.kind AS kind, n.name AS name, n.filePath AS filePath, n.startLine AS startLine, n.endLine AS endLine, n.ownerId AS ownerId, n.text AS text, n.reason AS reason, n.candidates AS candidates, n.attemptedResolvers AS attemptedResolvers, n.description AS description`;
+  }
   return includeContent
     ? `MATCH (n:${quoted}) RETURN n.id AS id, n.name AS name, n.filePath AS filePath, n.startLine AS startLine, n.endLine AS endLine, n.content AS content, n.description AS description`
     : `MATCH (n:${quoted}) RETURN n.id AS id, n.name AS name, n.filePath AS filePath, n.startLine AS startLine, n.endLine AS endLine, n.description AS description`;
@@ -82,6 +85,12 @@ function mapNode(label, row, includeContent) {
       responseKeys: row.responseKeys,
       errorKeys: row.errorKeys,
       middleware: row.middleware,
+      kind: row.kind,
+      ownerId: row.ownerId,
+      text: row.text,
+      reason: row.reason,
+      candidates: row.candidates,
+      attemptedResolvers: row.attemptedResolvers,
     },
   };
 }

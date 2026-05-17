@@ -9,7 +9,7 @@
         "gitnexus",
         "mcp",
         "--db",
-        ".gitnexus/gitnexus.sqlite"
+        ".gitnexus/lbug"
       ]
     }
   }

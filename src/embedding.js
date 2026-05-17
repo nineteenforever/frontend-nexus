@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { readGitNexusEmbeddings, writeGitNexusEmbeddings } from './lbug-writer.js';
+import { resolveLocalEmbeddingModel } from './model-resolver.js';
 
 function nodeProps(node) {
   return node.properties ?? node;
@@ -66,15 +67,8 @@ function embedWithHash(texts, options = {}) {
 }
 
 async function embedWithLocalModel(texts, options = {}) {
-  const model =
-    options.model ??
-    process.env.GITNEXUS_LOCAL_EMBEDDING_MODEL ??
-    process.env.GITNEXUS_EMBEDDING_MODEL;
-  if (!model) {
-    throw new Error(
-      'Local embedding requires --model or GITNEXUS_LOCAL_EMBEDDING_MODEL pointing to a local model directory',
-    );
-  }
+  const resolved = resolveLocalEmbeddingModel(options);
+  const model = resolved.model;
 
   let transformers;
   try {
@@ -118,10 +112,7 @@ export async function embedTexts(texts, options = {}) {
     return {
       vectors: await embedWithLocalModel(texts, options),
       provider,
-      model:
-        options.model ??
-        process.env.GITNEXUS_LOCAL_EMBEDDING_MODEL ??
-        process.env.GITNEXUS_EMBEDDING_MODEL,
+      model: resolveLocalEmbeddingModel(options).model,
     };
   }
   throw new Error(`Unsupported embedding provider: ${provider}`);

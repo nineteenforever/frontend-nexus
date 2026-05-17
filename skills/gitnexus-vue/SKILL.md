@@ -1,62 +1,70 @@
 ---
 name: gitnexus-vue
-description: "Use when exploring, debugging, refactoring, or reviewing Vue frontend projects indexed by GitNexus Frontend. Focuses on components, templates, composables, stores, routes, and frontend call chains."
+description: "Use when exploring, debugging, refactoring, or reviewing Vue projects indexed by GitNexus Frontend. Best for component/render graphs, routes, Vuex/Pinia stores, composables, and change impact radius."
 ---
 
 # GitNexus Vue Skill
 
-## When To Use
+## Purpose
 
-Use this skill for Vue frontend code questions:
+Use the GitNexus graph before relying on memory or raw grep. The graph is meant to give an agent a project-level map: what imports what, what renders what, what calls what, which route reaches which component, which component uses which store, and where a change may propagate.
 
-- "What renders this component?"
-- "What happens when this button is clicked?"
-- "Where is this store used?"
-- "Trace this route to the component and composables it touches."
-- "What frontend code changes if I refactor this composable?"
+The graph is authoritative only for relations that were statically resolved. `UnresolvedReference` is not a normal result; it is a warning that a nearby relation may hide more impact.
 
 ## First Checks
 
-Run these before answering from memory:
+For any indexed project, start with:
 
 ```bash
 gitnexus stats --db .gitnexus/lbug
-gitnexus query "<feature or symbol>" --db .gitnexus/lbug
+gitnexus query "<symbol, route, component, store, or feature>" --db .gitnexus/lbug
 ```
 
-If no index exists or the graph is stale, index the project:
+If the graph is missing or stale:
 
 ```bash
 gitnexus analyze --root .
 ```
 
-Embedding does not affect graph precision. Prefer graph search first:
+Use `--diagnostics` only when debugging parser/type compatibility. Diagnostics are skipped by default for speed and do not affect normal edge creation.
 
-```bash
-gitnexus analyze --embedding
-gitnexus query "checkout component store flow" --db .gitnexus/lbug
-```
+## Agent Workflow
 
-## Exploration Workflow
+1. Run `gitnexus_stats` to understand graph size and whether `UnresolvedReference` nodes exist.
+2. Run `gitnexus_unresolved_report` early. Treat unresolved items as blockers only when they are near the files/symbols you are changing.
+3. Use `gitnexus_query` to find candidate symbols. Prefer exact component/store/composable names over broad natural language.
+4. For a refactor or method change, run `gitnexus_impact_radius` on the exact symbol or node id before editing.
+5. Use `gitnexus_context` for direct incoming/outgoing edges, then `gitnexus_graph` for a wider local slice.
+6. Use `gitnexus_call_chain` when tracing runtime-ish flow from an entry point such as a click handler, composable, route component, or store action.
+7. Read the source files returned by the graph before changing code. The graph narrows the search; source remains the final proof.
 
-1. `gitnexus query` for the user-facing feature, component, composable, route, or store name.
-2. `gitnexus context --symbol <name>` to inspect direct incoming and outgoing edges.
-3. `gitnexus chain --from <name> --depth 5` to trace runtime-ish frontend flow.
-4. Read the source files for the returned nodes before making code changes.
+## Impact Rules
+
+When `gitnexus_impact_radius` returns `confidence: "complete"`, no unresolved blockers were found near the returned slice.
+
+When it returns `confidence: "partial"`:
+
+- Inspect `unresolvedBlockers` before saying a change is safe.
+- Use `rg` and source reads around the blocker file/line.
+- Do not conclude "no callers" or "no renderers" from a small result if unresolved blockers are attached to the same owner/file.
+
+Unresolved references should be rare and actionable. Normal third-party packages are stored as `ExternalModule` nodes with `IMPORTS` or `RENDERS` edges; they should not be treated as graph gaps.
 
 ## Edge Semantics
 
-- `RENDERS`: Vue template component usage.
-- `HANDLES`: template interpolation, `v-bind`, `v-on`, or other directive expression linked to script symbols.
-- `CALLS`: TypeScript checker resolved function/method/composable calls.
-- `USES_STORE`: a store composable call resolved to a `Store` node.
-- `ROUTES_TO`: router route object points to a Vue component.
-- `IMPORTS`: static import path relation.
-- `DEFINES`: file contains symbol.
+- `DEFINES`: a file contains a symbol, route, inline component, or synthetic Vue option node.
+- `IMPORTS`: static or dynamic import. Local assets and third-party packages are still linked.
+- `CALLS`: TypeScript/Vue-aware function, method, constructor, composable, Vuex, or Pinia action call.
+- `RENDERS`: Vue template renders a local component, inline component, or external component module.
+- `HANDLES`: template expression references a script symbol, such as `@click`, `v-if`, `:prop`, or interpolation.
+- `ROUTES_TO`: Vue Router route object points to a component or component module.
+- `USES_STORE`: component/composable/method uses a Pinia or Vuex store.
+- `MIXES_IN`: Vue 2 `mixins` or `extends` relation.
+- `HAS_UNRESOLVED`: owner/file has an unresolved relation that may hide impact.
 
 ## MCP
 
-For agents using MCP, configure:
+Recommended MCP config:
 
 ```json
 {
@@ -72,10 +80,16 @@ For agents using MCP, configure:
 Prefer MCP tools in this order:
 
 1. `gitnexus_stats`
-2. `gitnexus_query`
-3. `gitnexus_context`
-4. `gitnexus_call_chain`
-5. `gitnexus_graph`
-6. `gitnexus_cypher`
+2. `gitnexus_unresolved_report`
+3. `gitnexus_query`
+4. `gitnexus_impact_radius`
+5. `gitnexus_context`
+6. `gitnexus_call_chain`
+7. `gitnexus_graph`
+8. `gitnexus_cypher`
 
-Use `gitnexus_export` only when the project is small or the user explicitly needs a full graph dump.
+Use `gitnexus_export` only for small projects or explicit full-graph requests.
+
+## Good Agent Answers
+
+When answering architecture or impact questions, include the exact node names/files you relied on and mention whether unresolved blockers were present. If blockers exist, explain what you manually checked in source. Avoid claiming 100% impact coverage unless the graph slice is complete and the relevant source files agree.
