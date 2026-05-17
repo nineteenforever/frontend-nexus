@@ -13,7 +13,7 @@ function fakeModel(dir) {
 }
 
 test('resolves an explicit local embedding model directory', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'frontend-nexus-model-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vuenexus-model-'));
   fakeModel(root);
   const info = localEmbeddingModelInfo({ model: root });
   assert.equal(info.model, root);
@@ -22,7 +22,7 @@ test('resolves an explicit local embedding model directory', () => {
 });
 
 test('resolves a configured npm model package', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'frontend-nexus-model-pkg-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vuenexus-model-pkg-'));
   const packageRoot = path.join(root, 'node_modules', '@scope', 'model');
   const modelRoot = path.join(packageRoot, 'models', 'embedding');
   fs.mkdirSync(packageRoot, { recursive: true });
@@ -31,7 +31,7 @@ test('resolves a configured npm model package', () => {
     JSON.stringify({
       name: '@scope/model',
       version: '1.0.0',
-      gitnexus: { embeddingModelPath: 'models/embedding' },
+      vuenexus: { embeddingModelPath: 'models/embedding' },
     }),
   );
   fakeModel(modelRoot);

@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { gitnexusRegistryPath, NODE_LABELS, queryGitNexusLbug } from './lbug-writer.js';
+import { vuenexusRegistryPath, NODE_LABELS, queryVueNexusLbug } from './lbug-writer.js';
 
 const pkgPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'package.json');
 
@@ -36,7 +36,7 @@ function readBody(req) {
 
 async function readRegistry() {
   try {
-    const entries = JSON.parse(await fs.readFile(gitnexusRegistryPath(), 'utf8'));
+    const entries = JSON.parse(await fs.readFile(vuenexusRegistryPath(), 'utf8'));
     return Array.isArray(entries) ? entries : [];
   } catch {
     return [];
@@ -112,14 +112,14 @@ export async function buildGraph(lbugPath, includeContent = false) {
   const nodes = [];
   for (const label of NODE_LABELS) {
     try {
-      const rows = await queryGitNexusLbug(lbugPath, nodeQuery(label, includeContent));
+      const rows = await queryVueNexusLbug(lbugPath, nodeQuery(label, includeContent));
       nodes.push(...rows.map((row) => mapNode(label, row, includeContent)));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (!message.includes('does not exist') && !message.includes('No table')) throw err;
     }
   }
-  const relRows = await queryGitNexusLbug(
+  const relRows = await queryVueNexusLbug(
     lbugPath,
     'MATCH (a)-[r:CodeRelation]->(b) RETURN a.id AS sourceId, b.id AS targetId, r.type AS type, r.confidence AS confidence, r.reason AS reason, r.step AS step',
   );
@@ -163,7 +163,7 @@ async function sendGraphStream(res, graph) {
   res.end();
 }
 
-export async function serveGitNexus({ port = 3000, host = '127.0.0.1' } = {}) {
+export async function serveVueNexus({ port = 3000, host = '127.0.0.1' } = {}) {
   const pkg = JSON.parse(await fs.readFile(pkgPath, 'utf8'));
   const server = http.createServer(async (req, res) => {
     try {
@@ -204,7 +204,7 @@ export async function serveGitNexus({ port = 3000, host = '127.0.0.1' } = {}) {
 
       if (url.pathname === '/api/repo') {
         const repo = await resolveRepo(url.searchParams.get('repo') ?? undefined);
-        if (!repo) return sendJson(res, 404, { error: 'Repository not found. Run: gitnexus analyze' });
+        if (!repo) return sendJson(res, 404, { error: 'Repository not found. Run: vuenexus analyze' });
         return sendJson(res, 200, {
           name: repo.name,
           repoPath: repo.path,
@@ -229,7 +229,7 @@ export async function serveGitNexus({ port = 3000, host = '127.0.0.1' } = {}) {
         const body = await readBody(req);
         const repo = await resolveRepo(body.repo);
         if (!repo) return sendJson(res, 404, { error: 'Repository not found' });
-        const result = await queryGitNexusLbug(path.join(repo.storagePath, 'lbug'), body.cypher);
+        const result = await queryVueNexusLbug(path.join(repo.storagePath, 'lbug'), body.cypher);
         return sendJson(res, 200, { result });
       }
 
@@ -255,13 +255,13 @@ export async function serveGitNexus({ port = 3000, host = '127.0.0.1' } = {}) {
       }
 
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end('<!doctype html><title>GitNexus</title><body>GitNexus frontend-only API server is running.</body>');
+      res.end('<!doctype html><title>VueNexus</title><body>VueNexus frontend-only API server is running.</body>');
     } catch (err) {
       sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
     }
   });
 
   await new Promise((resolve) => server.listen(port, host, resolve));
-  process.stdout.write(`GitNexus frontend-only server listening at http://${host}:${port}\n`);
+  process.stdout.write(`VueNexus frontend-only server listening at http://${host}:${port}\n`);
   return server;
 }

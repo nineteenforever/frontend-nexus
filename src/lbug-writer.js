@@ -110,8 +110,8 @@ function openDb(lbugPath, { readOnly = false } = {}) {
   );
 }
 
-export function gitnexusRegistryPath() {
-  return path.join(os.homedir(), '.gitnexus', 'registry.json');
+export function vuenexusRegistryPath() {
+  return path.join(os.homedir(), '.vuenexus', 'registry.json');
 }
 
 async function drain(result) {
@@ -414,7 +414,7 @@ function tryGit(repoPath, args) {
 }
 
 async function updateRegistry(repoPath, storagePath, meta, name = path.basename(repoPath)) {
-  const registryPath = gitnexusRegistryPath();
+  const registryPath = vuenexusRegistryPath();
   await fsp.mkdir(path.dirname(registryPath), { recursive: true });
   let entries = [];
   try {
@@ -437,9 +437,9 @@ async function updateRegistry(repoPath, storagePath, meta, name = path.basename(
   return name;
 }
 
-export async function writeGitNexusLbug(graph, repoPath, options = {}) {
+export async function writeVueNexusLbug(graph, repoPath, options = {}) {
   repoPath = path.resolve(repoPath);
-  const storagePath = path.join(repoPath, '.gitnexus');
+  const storagePath = path.join(repoPath, '.vuenexus');
   const lbugPath = path.join(storagePath, 'lbug');
   await fsp.mkdir(storagePath, { recursive: true });
   for (const suffix of ['', '.wal', '.lock']) {
@@ -500,7 +500,7 @@ async function updateMetaAndRegistryFromLbug(lbugPath, embeddingSummary) {
   };
   await fsp.writeFile(metaPath, `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
 
-  const registryPath = gitnexusRegistryPath();
+  const registryPath = vuenexusRegistryPath();
   try {
     const entries = JSON.parse(await fsp.readFile(registryPath, 'utf8'));
     const idx = entries.findIndex((item) => path.resolve(item.storagePath ?? '') === storagePath);
@@ -512,7 +512,7 @@ async function updateMetaAndRegistryFromLbug(lbugPath, embeddingSummary) {
   } catch {}
 }
 
-export async function writeGitNexusEmbeddings(lbugPath, embeddings, summary = {}) {
+export async function writeVueNexusEmbeddings(lbugPath, embeddings, summary = {}) {
   const db = openDb(lbugPath);
   const conn = new lbug.Connection(db);
   try {
@@ -533,9 +533,9 @@ export async function writeGitNexusEmbeddings(lbugPath, embeddings, summary = {}
   return embeddingSummary;
 }
 
-export async function readGitNexusEmbeddings(lbugPath) {
+export async function readVueNexusEmbeddings(lbugPath) {
   try {
-    return await queryGitNexusLbug(
+    return await queryVueNexusLbug(
       lbugPath,
       'MATCH (n:CodeEmbedding) RETURN n.id AS id, n.nodeId AS nodeId, n.chunkIndex AS chunkIndex, n.startLine AS startLine, n.endLine AS endLine, n.embedding AS embedding, n.contentHash AS contentHash',
     );
@@ -546,7 +546,7 @@ export async function readGitNexusEmbeddings(lbugPath) {
   }
 }
 
-export async function queryGitNexusLbug(lbugPath, query) {
+export async function queryVueNexusLbug(lbugPath, query) {
   const db = openDb(lbugPath, { readOnly: true });
   const conn = new lbug.Connection(db);
   try {
@@ -557,5 +557,5 @@ export async function queryGitNexusLbug(lbugPath, query) {
 }
 
 export function defaultLbugPath(root = process.cwd()) {
-  return path.join(path.resolve(root), '.gitnexus', 'lbug');
+  return path.join(path.resolve(root), '.vuenexus', 'lbug');
 }

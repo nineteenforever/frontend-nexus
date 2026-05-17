@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { semanticSearchLbug } from './embedding.js';
-import { queryGitNexusLbug } from './lbug-writer.js';
+import { queryVueNexusLbug } from './lbug-writer.js';
 import { buildGraph, searchGraph } from './server.js';
 
 function jsonContent(value) {
@@ -184,12 +184,12 @@ function stats(graph) {
 
 export async function runMcpServer(lbugPath) {
   const server = new McpServer({
-    name: 'gitnexus',
+    name: 'vuenexus',
     version: '0.1.0',
   });
 
   server.tool(
-    'gitnexus_query',
+    'vuenexus_query',
     'Search Vue/TS frontend graph nodes.',
     {
       query: z.string(),
@@ -199,7 +199,7 @@ export async function runMcpServer(lbugPath) {
   );
 
   server.tool(
-    'gitnexus_semantic_search',
+    'vuenexus_semantic_search',
     'Semantic search over stored LadybugDB embeddings. Graph precision is independent from embeddings.',
     {
       query: z.string(),
@@ -218,7 +218,7 @@ export async function runMcpServer(lbugPath) {
   );
 
   server.tool(
-    'gitnexus_graph',
+    'vuenexus_graph',
     'Return direct incoming/outgoing graph relationships for a node id or symbol name.',
     {
       symbolOrId: z.string(),
@@ -234,16 +234,16 @@ export async function runMcpServer(lbugPath) {
   );
 
   server.tool(
-    'gitnexus_cypher',
+    'vuenexus_cypher',
     'Run Cypher over the stored LadybugDB frontend graph.',
     {
       query: z.string(),
     },
-    async ({ query }) => jsonContent({ rows: await queryGitNexusLbug(lbugPath, query) }),
+    async ({ query }) => jsonContent({ rows: await queryVueNexusLbug(lbugPath, query) }),
   );
 
   server.tool(
-    'gitnexus_context',
+    'vuenexus_context',
     'Return incoming and outgoing context for one frontend symbol.',
     {
       symbolOrId: z.string(),
@@ -265,7 +265,7 @@ export async function runMcpServer(lbugPath) {
   );
 
   server.tool(
-    'gitnexus_call_chain',
+    'vuenexus_call_chain',
     'Traverse frontend call chains over CALLS, RENDERS, and HANDLES relationships.',
     {
       from: z.string(),
@@ -282,7 +282,7 @@ export async function runMcpServer(lbugPath) {
   );
 
   server.tool(
-    'gitnexus_unresolved_report',
+    'vuenexus_unresolved_report',
     'Return unresolved imports, route components, template components, store calls, and other graph gaps that may hide impact.',
     {
       kind: z.string().optional(),
@@ -292,7 +292,7 @@ export async function runMcpServer(lbugPath) {
   );
 
   server.tool(
-    'gitnexus_impact_radius',
+    'vuenexus_impact_radius',
     'Return reverse impact radius for a symbol/node plus unresolved blockers that may hide additional callers or usages.',
     {
       symbolOrId: z.string(),
@@ -303,11 +303,11 @@ export async function runMcpServer(lbugPath) {
       jsonContent(impactRadius(await buildGraph(lbugPath), symbolOrId, depth, limit)),
   );
 
-  server.tool('gitnexus_stats', 'Return graph totals grouped by node and edge type.', {}, async () =>
+  server.tool('vuenexus_stats', 'Return graph totals grouped by node and edge type.', {}, async () =>
     jsonContent(stats(await buildGraph(lbugPath))),
   );
 
-  server.tool('gitnexus_export', 'Return the full stored frontend graph as JSON. Use sparingly on large projects.', {}, async () =>
+  server.tool('vuenexus_export', 'Return the full stored frontend graph as JSON. Use sparingly on large projects.', {}, async () =>
     jsonContent(await buildGraph(lbugPath, true)),
   );
 

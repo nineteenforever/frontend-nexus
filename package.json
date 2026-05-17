@@ -1,10 +1,10 @@
 {
-  "name": "frontend-nexus",
+  "name": "vuenexus",
   "version": "0.1.0",
-  "description": "Frontend-only Git Nexus for Vue projects with precise TS/Vue call graphs.",
+  "description": "VueNexus analyzes Vue projects into precise TS/Vue graph and embedding stores.",
   "type": "module",
   "bin": {
-    "gitnexus": "src/cli.js"
+    "vuenexus": "src/cli.js"
   },
   "files": [
     "src",

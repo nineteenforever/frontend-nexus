@@ -1,13 +1,13 @@
 ---
-name: gitnexus-vue
-description: "Use when exploring, debugging, refactoring, or reviewing Vue projects indexed by GitNexus Frontend. Best for component/render graphs, routes, Vuex/Pinia stores, composables, and change impact radius."
+name: vuenexus
+description: "Use when exploring, debugging, refactoring, or reviewing Vue projects indexed by VueNexus. Best for component/render graphs, routes, Vuex/Pinia stores, composables, and change impact radius."
 ---
 
-# GitNexus Vue Skill
+# VueNexus Vue Skill
 
 ## Purpose
 
-Use the GitNexus graph before relying on memory or raw grep. The graph is meant to give an agent a project-level map: what imports what, what renders what, what calls what, which route reaches which component, which component uses which store, and where a change may propagate.
+Use the VueNexus graph before relying on memory or raw grep. The graph is meant to give an agent a project-level map: what imports what, what renders what, what calls what, which route reaches which component, which component uses which store, and where a change may propagate.
 
 The graph is authoritative only for relations that were statically resolved. `UnresolvedReference` is not a normal result; it is a warning that a nearby relation may hide more impact.
 
@@ -16,31 +16,31 @@ The graph is authoritative only for relations that were statically resolved. `Un
 For any indexed project, start with:
 
 ```bash
-gitnexus stats --db .gitnexus/lbug
-gitnexus query "<symbol, route, component, store, or feature>" --db .gitnexus/lbug
+vuenexus stats --db .vuenexus/lbug
+vuenexus query "<symbol, route, component, store, or feature>" --db .vuenexus/lbug
 ```
 
 If the graph is missing or stale:
 
 ```bash
-gitnexus analyze --root .
+vuenexus analyze --root .
 ```
 
 Use `--diagnostics` only when debugging parser/type compatibility. Diagnostics are skipped by default for speed and do not affect normal edge creation.
 
 ## Agent Workflow
 
-1. Run `gitnexus_stats` to understand graph size and whether `UnresolvedReference` nodes exist.
-2. Run `gitnexus_unresolved_report` early. Treat unresolved items as blockers only when they are near the files/symbols you are changing.
-3. Use `gitnexus_query` to find candidate symbols. Prefer exact component/store/composable names over broad natural language.
-4. For a refactor or method change, run `gitnexus_impact_radius` on the exact symbol or node id before editing.
-5. Use `gitnexus_context` for direct incoming/outgoing edges, then `gitnexus_graph` for a wider local slice.
-6. Use `gitnexus_call_chain` when tracing runtime-ish flow from an entry point such as a click handler, composable, route component, or store action.
+1. Run `vuenexus_stats` to understand graph size and whether `UnresolvedReference` nodes exist.
+2. Run `vuenexus_unresolved_report` early. Treat unresolved items as blockers only when they are near the files/symbols you are changing.
+3. Use `vuenexus_query` to find candidate symbols. Prefer exact component/store/composable names over broad natural language.
+4. For a refactor or method change, run `vuenexus_impact_radius` on the exact symbol or node id before editing.
+5. Use `vuenexus_context` for direct incoming/outgoing edges, then `vuenexus_graph` for a wider local slice.
+6. Use `vuenexus_call_chain` when tracing runtime-ish flow from an entry point such as a click handler, composable, route component, or store action.
 7. Read the source files returned by the graph before changing code. The graph narrows the search; source remains the final proof.
 
 ## Impact Rules
 
-When `gitnexus_impact_radius` returns `confidence: "complete"`, no unresolved blockers were found near the returned slice.
+When `vuenexus_impact_radius` returns `confidence: "complete"`, no unresolved blockers were found near the returned slice.
 
 When it returns `confidence: "partial"`:
 
@@ -69,9 +69,9 @@ Recommended MCP config:
 ```json
 {
   "mcpServers": {
-    "gitnexus": {
+    "vuenexus": {
       "command": "npx",
-      "args": ["-y", "--package", "frontend-nexus@latest", "gitnexus", "mcp", "--db", ".gitnexus/lbug"]
+      "args": ["-y", "--package", "vuenexus@latest", "vuenexus", "mcp", "--db", ".vuenexus/lbug"]
     }
   }
 }
@@ -79,16 +79,16 @@ Recommended MCP config:
 
 Prefer MCP tools in this order:
 
-1. `gitnexus_stats`
-2. `gitnexus_unresolved_report`
-3. `gitnexus_query`
-4. `gitnexus_impact_radius`
-5. `gitnexus_context`
-6. `gitnexus_call_chain`
-7. `gitnexus_graph`
-8. `gitnexus_cypher`
+1. `vuenexus_stats`
+2. `vuenexus_unresolved_report`
+3. `vuenexus_query`
+4. `vuenexus_impact_radius`
+5. `vuenexus_context`
+6. `vuenexus_call_chain`
+7. `vuenexus_graph`
+8. `vuenexus_cypher`
 
-Use `gitnexus_export` only for small projects or explicit full-graph requests.
+Use `vuenexus_export` only for small projects or explicit full-graph requests.
 
 ## Good Agent Answers
 

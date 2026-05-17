@@ -62,8 +62,8 @@ function resolveModelPackage(packageName) {
   if (!root) return undefined;
   const pkg = readJson(path.join(root, 'package.json'));
   const configured =
-    pkg.gitnexus?.embeddingModelPath ??
-    pkg.frontendNexus?.embeddingModelPath ??
+    pkg.vuenexus?.embeddingModelPath ??
+    pkg.vueNexus?.embeddingModelPath ??
     pkg.embeddingModelPath;
   const candidates = [
     configured && path.join(root, configured),
@@ -103,17 +103,16 @@ function resolveBundledModel() {
 
 function defaultModelPackages() {
   return [
-    '@frontend-nexus/embedding-model',
-    '@gitnexus/embedding-model',
-    'frontend-nexus-embedding-model',
+    '@vuenexus/embedding-model',
+    'vuenexus-embedding-model',
   ].filter(Boolean);
 }
 
 export function resolveLocalEmbeddingModel(options = {}) {
   const explicit =
     options.model ??
-    process.env.GITNEXUS_LOCAL_EMBEDDING_MODEL ??
-    process.env.GITNEXUS_EMBEDDING_MODEL;
+    process.env.VUENEXUS_LOCAL_EMBEDDING_MODEL ??
+    process.env.VUENEXUS_EMBEDDING_MODEL;
 
   if (explicit) {
     const modelPath = resolveExistingModelPath(explicit);
@@ -128,7 +127,7 @@ export function resolveLocalEmbeddingModel(options = {}) {
 
   for (const packageName of [
     options.modelPackage,
-    process.env.GITNEXUS_LOCAL_EMBEDDING_MODEL_PACKAGE,
+    process.env.VUENEXUS_LOCAL_EMBEDDING_MODEL_PACKAGE,
     ...defaultModelPackages(),
   ].filter(Boolean)) {
     const packageModel = resolveModelPackage(packageName);
@@ -138,9 +137,9 @@ export function resolveLocalEmbeddingModel(options = {}) {
   throw new Error(
     [
       'Local embedding model was not found.',
-      'Provide --model /absolute/model/dir, set GITNEXUS_LOCAL_EMBEDDING_MODEL,',
+      'Provide --model /absolute/model/dir, set VUENEXUS_LOCAL_EMBEDDING_MODEL,',
       'publish this package with a Transformers.js model in models/embedding,',
-      'or install/set GITNEXUS_LOCAL_EMBEDDING_MODEL_PACKAGE to a model package.',
+      'or install/set VUENEXUS_LOCAL_EMBEDDING_MODEL_PACKAGE to a model package.',
     ].join(' '),
   );
 }

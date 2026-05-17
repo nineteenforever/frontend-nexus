@@ -1,15 +1,15 @@
-# GitNexus Frontend Design
+# VueNexus Design
 
-## What Was Kept From GitNexus
+## Core Contract
 
-GitNexus's useful core is not the language count. It is the contract:
+VueNexus focuses on the graph contract rather than broad language coverage:
 
 - typed graph nodes
 - one relationship table with `type`, `confidence`, and `reason`
 - separate embedding storage keyed by graph node id
 - MCP tools that return compact graph slices rather than raw database internals
 
-GitNexus Frontend keeps that contract and removes the multi-language ingestion, heritage, MRO, and generalized resolver layers.
+It keeps the graph surface compact and avoids multi-language ingestion, heritage, MRO, and generalized resolver layers that add noise for Vue architecture analysis.
 
 ## What Was Removed
 
@@ -20,7 +20,7 @@ GitNexus Frontend keeps that contract and removes the multi-language ingestion, 
 - route/tool/markdown indexing
 - LadybugDB-specific graph DDL
 
-Those are powerful in a general indexer, but they add noise for a Vue frontend project.
+Those are powerful in a general indexer, but they add noise for a Vue project graph.
 
 ## Parser Strategy
 

@@ -14,7 +14,7 @@ const IGNORE_DIRS = new Set([
   '.nuxt',
   '.output',
   'coverage',
-  '.gitnexus',
+  '.vuenexus',
 ]);
 
 function slash(filePath) {
@@ -2285,7 +2285,7 @@ function createProgram(root, realFiles, virtualFiles, virtualByVueFile) {
     options.types = options.types.filter((typeName) => typeName !== 'vite/client');
   }
 
-  const shimFile = path.normalize(path.join(root, '.gitnexus-vue-shim.d.ts'));
+  const shimFile = path.normalize(path.join(root, '.vuenexus-vue-shim.d.ts'));
   virtualFiles.set(shimFile, {
     realPath: shimFile,
     virtualFileName: shimFile,

@@ -15,7 +15,7 @@ models/embedding/tokenizer.json
 models/embedding/onnx/model_quantized.onnx
 ```
 
-`gitnexus analyze --embedding` and `gitnexus embed` will auto-detect this directory when `provider=local`.
+`vuenexus analyze --embedding` and `vuenexus embed` will auto-detect this directory when `provider=local`.
 
 Recommended internal model choices are small code/text embedding models exported for Transformers.js ONNX
 runtime. Keep the model license and npm registry package-size limits in mind before publishing.
