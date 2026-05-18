@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { readGitNexusEmbeddings, writeGitNexusEmbeddings } from './lbug-writer.js';
+import { readVueNexusEmbeddings, writeVueNexusEmbeddings } from './lbug-writer.js';
+import { resolveLocalEmbeddingModel } from './model-resolver.js';
 
 function nodeProps(node) {
   return node.properties ?? node;
@@ -24,23 +25,23 @@ export function embeddingText(node) {
 }
 
 export function contentHash(text) {
-  return createHash('sha1').update('gitnexus-frontend-embedding-v1\n').update(text).digest('hex');
+  return createHash('sha1').update('vuenexus-frontend-embedding-v1\n').update(text).digest('hex');
 }
 
-function normalizeProvider(provider = process.env.GITNEXUS_EMBEDDING_PROVIDER) {
+function normalizeProvider(provider = process.env.VUENEXUS_EMBEDDING_PROVIDER) {
   return provider ?? 'local';
 }
 
 async function embedWithHttp(texts, options = {}) {
-  const url = options.url ?? process.env.GITNEXUS_EMBEDDING_URL;
-  const model = options.model ?? process.env.GITNEXUS_EMBEDDING_MODEL;
-  if (!url || !model) throw new Error('GITNEXUS_EMBEDDING_URL and GITNEXUS_EMBEDDING_MODEL are required for provider=http');
+  const url = options.url ?? process.env.VUENEXUS_EMBEDDING_URL;
+  const model = options.model ?? process.env.VUENEXUS_EMBEDDING_MODEL;
+  if (!url || !model) throw new Error('VUENEXUS_EMBEDDING_URL and VUENEXUS_EMBEDDING_MODEL are required for provider=http');
   const response = await fetch(url.replace(/\/$/, '') + '/v1/embeddings', {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      ...(process.env.GITNEXUS_EMBEDDING_API_KEY
-        ? { authorization: `Bearer ${process.env.GITNEXUS_EMBEDDING_API_KEY}` }
+      ...(process.env.VUENEXUS_EMBEDDING_API_KEY
+        ? { authorization: `Bearer ${process.env.VUENEXUS_EMBEDDING_API_KEY}` }
         : {}),
     },
     body: JSON.stringify({ model, input: texts }),
@@ -51,7 +52,7 @@ async function embedWithHttp(texts, options = {}) {
 }
 
 function embedWithHash(texts, options = {}) {
-  const dims = Number(options.dimensions ?? process.env.GITNEXUS_HASH_EMBEDDING_DIMS ?? 384);
+  const dims = Number(options.dimensions ?? process.env.VUENEXUS_HASH_EMBEDDING_DIMS ?? 384);
   return texts.map((text) => {
     const vector = new Array(dims).fill(0);
     for (const token of text.toLowerCase().match(/[a-z0-9_.$/-]+/g) ?? []) {
@@ -66,15 +67,8 @@ function embedWithHash(texts, options = {}) {
 }
 
 async function embedWithLocalModel(texts, options = {}) {
-  const model =
-    options.model ??
-    process.env.GITNEXUS_LOCAL_EMBEDDING_MODEL ??
-    process.env.GITNEXUS_EMBEDDING_MODEL;
-  if (!model) {
-    throw new Error(
-      'Local embedding requires --model or GITNEXUS_LOCAL_EMBEDDING_MODEL pointing to a local model directory',
-    );
-  }
+  const resolved = resolveLocalEmbeddingModel(options);
+  const model = resolved.model;
 
   let transformers;
   try {
@@ -88,13 +82,13 @@ async function embedWithLocalModel(texts, options = {}) {
 
   const { pipeline, env } = transformers;
   if (env) {
-    env.allowRemoteModels = process.env.GITNEXUS_ALLOW_REMOTE_MODELS === '1';
-    if (process.env.GITNEXUS_TRANSFORMERS_CACHE) env.cacheDir = process.env.GITNEXUS_TRANSFORMERS_CACHE;
+    env.allowRemoteModels = process.env.VUENEXUS_ALLOW_REMOTE_MODELS === '1';
+    if (process.env.VUENEXUS_TRANSFORMERS_CACHE) env.cacheDir = process.env.VUENEXUS_TRANSFORMERS_CACHE;
     if (path.isAbsolute(model)) env.localModelPath = path.dirname(model);
   }
 
   const extractor = await pipeline('feature-extraction', model, {
-    local_files_only: process.env.GITNEXUS_ALLOW_REMOTE_MODELS !== '1',
+    local_files_only: process.env.VUENEXUS_ALLOW_REMOTE_MODELS !== '1',
   });
   const out = await extractor(texts, { pooling: 'mean', normalize: true });
   const data = Array.from(out.data);
@@ -111,17 +105,14 @@ export async function embedTexts(texts, options = {}) {
     return {
       vectors: await embedWithHttp(texts, options),
       provider,
-      model: options.model ?? process.env.GITNEXUS_EMBEDDING_MODEL,
+      model: options.model ?? process.env.VUENEXUS_EMBEDDING_MODEL,
     };
   }
   if (provider === 'local') {
     return {
       vectors: await embedWithLocalModel(texts, options),
       provider,
-      model:
-        options.model ??
-        process.env.GITNEXUS_LOCAL_EMBEDDING_MODEL ??
-        process.env.GITNEXUS_EMBEDDING_MODEL,
+      model: resolveLocalEmbeddingModel(options).model,
     };
   }
   throw new Error(`Unsupported embedding provider: ${provider}`);
@@ -135,14 +126,14 @@ function embeddableNodes(nodes) {
 }
 
 export async function createEmbeddingsForNodes(nodes, options = {}) {
-  const batchSize = Number(options.batchSize ?? process.env.GITNEXUS_EMBEDDING_BATCH_SIZE ?? 16);
+  const batchSize = Number(options.batchSize ?? process.env.VUENEXUS_EMBEDDING_BATCH_SIZE ?? 16);
   const rows = [];
   const selected = embeddableNodes(nodes);
   let provider = normalizeProvider(options.provider);
   let model =
     options.model ??
-    process.env.GITNEXUS_LOCAL_EMBEDDING_MODEL ??
-    process.env.GITNEXUS_EMBEDDING_MODEL;
+    process.env.VUENEXUS_LOCAL_EMBEDDING_MODEL ??
+    process.env.VUENEXUS_EMBEDDING_MODEL;
 
   for (let i = 0; i < selected.length; i += batchSize) {
     const batch = selected.slice(i, i + batchSize);
@@ -179,7 +170,7 @@ export async function createEmbeddingsForNodes(nodes, options = {}) {
 
 export async function embedGraphToLbug(lbugPath, nodes, options = {}) {
   const { rows, summary } = await createEmbeddingsForNodes(nodes, options);
-  const written = await writeGitNexusEmbeddings(lbugPath, rows, summary);
+  const written = await writeVueNexusEmbeddings(lbugPath, rows, summary);
   return { ...summary, ...written };
 }
 
@@ -197,7 +188,7 @@ function cosine(a, b) {
 }
 
 export async function semanticSearchLbug(lbugPath, nodes, query, limit = 20, options = {}) {
-  const embeddings = await readGitNexusEmbeddings(lbugPath);
+  const embeddings = await readVueNexusEmbeddings(lbugPath);
   if (!embeddings.length) return [];
   let searchOptions = options;
   if (!searchOptions.provider) {

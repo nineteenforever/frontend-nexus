@@ -1,0 +1,3 @@
+display_name: "VueNexus Vue"
+short_description: "Trace Vue architecture and change impact with a VueNexus graph."
+default_prompt: "Use $vuenexus to inspect Vue components, routes, stores, composables, unresolved blockers, and impact radius before editing."

@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { semanticSearchLbug } from './embedding.js';
-import { queryGitNexusLbug } from './lbug-writer.js';
+import { queryVueNexusLbug } from './lbug-writer.js';
 import { buildGraph, searchGraph } from './server.js';
 
 function jsonContent(value) {
@@ -17,6 +17,7 @@ function jsonContent(value) {
 }
 
 function compactNode(node) {
+  const meta = node.properties?.description ? JSON.parse(node.properties.description) : {};
   return {
     id: node.id,
     type: node.label,
@@ -24,7 +25,11 @@ function compactNode(node) {
     filePath: node.properties?.filePath,
     startLine: node.properties?.startLine,
     endLine: node.properties?.endLine,
-    meta: node.properties?.description ? JSON.parse(node.properties.description) : {},
+    kind: node.properties?.kind ?? meta.kind,
+    text: node.properties?.text ?? meta.text,
+    reason: node.properties?.reason ?? meta.reason,
+    ownerId: node.properties?.ownerId ?? meta.ownerId,
+    meta,
   };
 }
 
@@ -64,7 +69,7 @@ function graphSlice(graph, symbolOrId, limit) {
 
 function callChain(graph, from, depth, limit) {
   const seeds = findNodes(graph, from, 10);
-  const allowed = new Set(['CALLS', 'RENDERS', 'HANDLES']);
+  const allowed = new Set(['CALLS', 'RENDERS', 'HANDLES', 'ROUTES_TO', 'USES_STORE', 'MIXES_IN']);
   const seenNodes = new Set(seeds.map((node) => node.id));
   const seenEdges = [];
   let frontier = seeds.map((node) => node.id);
@@ -87,6 +92,83 @@ function callChain(graph, from, depth, limit) {
   };
 }
 
+function unresolvedNodes(graph, kind) {
+  return graph.nodes.filter((node) => {
+    if (node.label !== 'UnresolvedReference') return false;
+    return !kind || node.properties?.kind === kind;
+  });
+}
+
+function unresolvedReport(graph, kind, limit) {
+  const nodes = unresolvedNodes(graph, kind);
+  const byKind = {};
+  for (const node of nodes) {
+    const k = node.properties?.kind ?? 'unknown';
+    byKind[k] = (byKind[k] ?? 0) + 1;
+  }
+  return {
+    total: nodes.length,
+    byKind,
+    unresolved: nodes.slice(0, limit).map(compactNode),
+  };
+}
+
+function relatedUnresolved(graph, impactedIds, seedFiles, limit = 50) {
+  const ownerIds = new Set(impactedIds);
+  const files = new Set(seedFiles.filter(Boolean));
+  const viaEdge = new Set(
+    graph.relationships
+      .filter((edge) => edge.type === 'HAS_UNRESOLVED' && ownerIds.has(edge.sourceId))
+      .map((edge) => edge.targetId),
+  );
+  return graph.nodes
+    .filter((node) => {
+      if (node.label !== 'UnresolvedReference') return false;
+      return viaEdge.has(node.id) || ownerIds.has(node.properties?.ownerId) || files.has(node.properties?.filePath);
+    })
+    .slice(0, limit)
+    .map(compactNode);
+}
+
+function impactRadius(graph, symbolOrId, depth, limit) {
+  const seeds = findNodes(graph, symbolOrId, 10);
+  const allowed = new Set(['CALLS', 'RENDERS', 'HANDLES', 'ROUTES_TO', 'USES_STORE', 'MIXES_IN', 'IMPORTS', 'DEFINES']);
+  const seenNodes = new Set(seeds.map((node) => node.id));
+  const seenEdges = [];
+  let frontier = seeds.map((node) => node.id);
+
+  for (let i = 0; i < depth && frontier.length && seenEdges.length < limit; i++) {
+    const next = [];
+    for (const edge of graph.relationships) {
+      if (!allowed.has(edge.type) || !frontier.includes(edge.targetId)) continue;
+      seenEdges.push(edge);
+      if (!seenNodes.has(edge.sourceId)) {
+        seenNodes.add(edge.sourceId);
+        next.push(edge.sourceId);
+      }
+      if (seenEdges.length >= limit) break;
+    }
+    frontier = next;
+  }
+
+  const impactedNodes = graph.nodes.filter((node) => seenNodes.has(node.id));
+  const unresolved = relatedUnresolved(
+    graph,
+    seenNodes,
+    impactedNodes.map((node) => node.properties?.filePath),
+  );
+  return {
+    confidence: unresolved.length ? 'partial' : 'complete',
+    seeds: seeds.map(compactNode),
+    nodes: impactedNodes.map(compactNode),
+    edges: seenEdges.map(compactEdge),
+    unresolvedBlockers: unresolved,
+    note: unresolved.length
+      ? 'Impact radius may be incomplete. Inspect unresolvedBlockers before treating empty or small impact as safe.'
+      : 'No unresolved blockers were found near this impact slice.',
+  };
+}
+
 function stats(graph) {
   const byNodeType = {};
   const byEdgeType = {};
@@ -102,12 +184,12 @@ function stats(graph) {
 
 export async function runMcpServer(lbugPath) {
   const server = new McpServer({
-    name: 'gitnexus',
+    name: 'vuenexus',
     version: '0.1.0',
   });
 
   server.tool(
-    'gitnexus_query',
+    'vuenexus_query',
     'Search Vue/TS frontend graph nodes.',
     {
       query: z.string(),
@@ -117,7 +199,7 @@ export async function runMcpServer(lbugPath) {
   );
 
   server.tool(
-    'gitnexus_semantic_search',
+    'vuenexus_semantic_search',
     'Semantic search over stored LadybugDB embeddings. Graph precision is independent from embeddings.',
     {
       query: z.string(),
@@ -136,7 +218,7 @@ export async function runMcpServer(lbugPath) {
   );
 
   server.tool(
-    'gitnexus_graph',
+    'vuenexus_graph',
     'Return direct incoming/outgoing graph relationships for a node id or symbol name.',
     {
       symbolOrId: z.string(),
@@ -152,16 +234,16 @@ export async function runMcpServer(lbugPath) {
   );
 
   server.tool(
-    'gitnexus_cypher',
+    'vuenexus_cypher',
     'Run Cypher over the stored LadybugDB frontend graph.',
     {
       query: z.string(),
     },
-    async ({ query }) => jsonContent({ rows: await queryGitNexusLbug(lbugPath, query) }),
+    async ({ query }) => jsonContent({ rows: await queryVueNexusLbug(lbugPath, query) }),
   );
 
   server.tool(
-    'gitnexus_context',
+    'vuenexus_context',
     'Return incoming and outgoing context for one frontend symbol.',
     {
       symbolOrId: z.string(),
@@ -183,7 +265,7 @@ export async function runMcpServer(lbugPath) {
   );
 
   server.tool(
-    'gitnexus_call_chain',
+    'vuenexus_call_chain',
     'Traverse frontend call chains over CALLS, RENDERS, and HANDLES relationships.',
     {
       from: z.string(),
@@ -199,11 +281,33 @@ export async function runMcpServer(lbugPath) {
     },
   );
 
-  server.tool('gitnexus_stats', 'Return graph totals grouped by node and edge type.', {}, async () =>
+  server.tool(
+    'vuenexus_unresolved_report',
+    'Return unresolved imports, route components, template components, store calls, and other graph gaps that may hide impact.',
+    {
+      kind: z.string().optional(),
+      limit: z.number().int().min(1).max(500).default(100),
+    },
+    async ({ kind, limit }) => jsonContent(unresolvedReport(await buildGraph(lbugPath), kind, limit)),
+  );
+
+  server.tool(
+    'vuenexus_impact_radius',
+    'Return reverse impact radius for a symbol/node plus unresolved blockers that may hide additional callers or usages.',
+    {
+      symbolOrId: z.string(),
+      depth: z.number().int().min(1).max(12).default(4),
+      limit: z.number().int().min(1).max(1000).default(300),
+    },
+    async ({ symbolOrId, depth, limit }) =>
+      jsonContent(impactRadius(await buildGraph(lbugPath), symbolOrId, depth, limit)),
+  );
+
+  server.tool('vuenexus_stats', 'Return graph totals grouped by node and edge type.', {}, async () =>
     jsonContent(stats(await buildGraph(lbugPath))),
   );
 
-  server.tool('gitnexus_export', 'Return the full stored frontend graph as JSON. Use sparingly on large projects.', {}, async () =>
+  server.tool('vuenexus_export', 'Return the full stored frontend graph as JSON. Use sparingly on large projects.', {}, async () =>
     jsonContent(await buildGraph(lbugPath, true)),
   );
 

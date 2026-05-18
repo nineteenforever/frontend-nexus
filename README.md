@@ -1,24 +1,24 @@
-# Frontend Nexus
+# VueNexus
 
-Vue-only GitNexus replacement for frontend projects.
+VueNexus is a Vue-focused graph analyzer for codebase tools and agents.
 
-The npm package name is `frontend-nexus`, but the public command, MCP tool names, graph vocabulary, storage paths, and web API intentionally stay compatible with GitNexus:
+The npm package name, public command, MCP tool names, storage paths, and registry use the `vuenexus` identity:
 
-- CLI command: `gitnexus`
-- MCP tools: `gitnexus_*`
-- local storage: `.gitnexus/lbug`
-- metadata: `.gitnexus/meta.json`
-- global registry: `~/.gitnexus/registry.json`
-- web API: `gitnexus serve`, consumable by GitNexus web
+- CLI command: `vuenexus`
+- MCP tools: `vuenexus_*`
+- local storage: `.vuenexus/lbug`
+- metadata: `.vuenexus/meta.json`
+- global registry: `~/.vuenexus/registry.json`
+- web API: `vuenexus serve`, shaped so the existing GitNexus repo's `gitnexus-web` can browse it
 
 This package does not try to support backend languages. It keeps the scanner small and specialized so Vue/TypeScript frontend graphs can be more precise.
 
 ## Install
 
 ```bash
-npm install -g frontend-nexus
-gitnexus analyze --root /path/to/vue-project --embedding
-gitnexus serve --port 4747
+npm install -g vuenexus
+vuenexus analyze --root /path/to/vue-project --embedding
+vuenexus serve --port 4747
 ```
 
 For local development inside this repo:
@@ -32,11 +32,11 @@ node src/cli.js analyze --root /path/to/vue-project --name my-vue-app --embeddin
 
 ## Analyze Pipeline
 
-`gitnexus analyze` is the core command. The current flow is:
+`vuenexus analyze` is the core command. The current flow is:
 
 1. Walk frontend source files under the project root.
    - includes `.vue`, `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`
-   - ignores `.git`, `node_modules`, `dist`, `build`, `.nuxt`, `.output`, `coverage`, `.gitnexus`
+   - ignores `.git`, `node_modules`, `dist`, `build`, `.nuxt`, `.output`, `coverage`, `.vuenexus`
 
 2. Create one `File` node for every scanned source file.
 
@@ -67,24 +67,30 @@ node src/cli.js analyze --root /path/to/vue-project --name my-vue-app --embeddin
 
 7. Collect graph edges.
    - `DEFINES`: file contains a declaration
-   - `IMPORTS`: static and dynamic imports
+   - `IMPORTS`: static and dynamic imports, including external packages and local assets
    - `CALLS`: TypeScript-resolved function/method/constructor calls
    - `RENDERS`: Vue template component usage
    - `HANDLES`: Vue template expressions referencing script symbols
    - `ROUTES_TO`: Vue Router route objects pointing to components
    - `USES_STORE`: Pinia store usage and store action calls
+   - `MIXES_IN`: Vue 2 `mixins` and `extends`
+   - `HAS_UNRESOLVED`: an owner/file has an actionable unresolved relation
 
 8. Apply Vue/frontend-specific precision rules.
    - `this.foo()` prefers real same-class/same-file method nodes over class nodes
    - `store.action()` links to the Pinia store action method when the store variable is known
+   - Vuex `mapState`, `mapGetters`, `mapActions`, `mapMutations`, `dispatch`, and `commit` are resolved when the store module can be identified
+   - Vue 2 Options API props, data, computed, methods, inline components, mixins, and component names are indexed
+   - `tsconfig`/`jsconfig`, common Vite/Webpack aliases, package self-imports, `src` directory aliases, barrel re-exports, and Vue component casing are resolved before a relation is marked unresolved
    - route objects are recognized only in route-like contexts, not every object with a `path`
    - type-only/interface callback signatures are filtered out from `CALLS`
    - variable initializer calls also get an edge from the variable node, useful for computed/composable chains
+   - third-party packages become `ExternalModule` nodes instead of `UnresolvedReference`
 
 9. Write the graph to LadybugDB.
-   - graph database: `.gitnexus/lbug`
-   - metadata: `.gitnexus/meta.json`
-   - registry entry: `~/.gitnexus/registry.json`
+   - graph database: `.vuenexus/lbug`
+   - metadata: `.vuenexus/meta.json`
+   - registry entry: `~/.vuenexus/registry.json`
 
 10. Return analysis stats and diagnostics.
     - diagnostics are TypeScript diagnostics; they help reveal unresolved library/shim gaps
@@ -92,22 +98,22 @@ node src/cli.js analyze --root /path/to/vue-project --name my-vue-app --embeddin
 
 ## Storage Format
 
-The storage format is intentionally GitNexus-compatible.
+The storage format is VueNexus-native while preserving the LadybugDB graph shape consumed by the existing web UI.
 
 Project-local files:
 
 ```text
-<project>/.gitnexus/lbug
-<project>/.gitnexus/meta.json
+<project>/.vuenexus/lbug
+<project>/.vuenexus/meta.json
 ```
 
 Global registry:
 
 ```text
-~/.gitnexus/registry.json
+~/.vuenexus/registry.json
 ```
 
-LadybugDB node labels use the existing GitNexus schema where possible:
+LadybugDB node labels use the existing web graph schema where possible:
 
 | Frontend concept | Stored label |
 | --- | --- |
@@ -117,6 +123,8 @@ LadybugDB node labels use the existing GitNexus schema where possible:
 | `Store` | `Class` |
 | `Router` | `CodeElement` |
 | `Route` | `Route` |
+| `ExternalModule` | `ExternalModule` |
+| `UnresolvedReference` | `UnresolvedReference` |
 | `Function` | `Function` |
 | `Method` | `Method` |
 | `Class` | `Class` |
@@ -124,6 +132,8 @@ LadybugDB node labels use the existing GitNexus schema where possible:
 | `Variable` | `Variable` |
 
 Frontend-specific node type information is preserved in the `description` JSON as `frontendType`.
+
+`UnresolvedReference` is reserved for actionable graph gaps after local resolvers have been tried. It should not contain ordinary third-party imports.
 
 Relationships are stored in `CodeRelation`:
 
@@ -143,60 +153,67 @@ source -[:CodeRelation {
 Analyze and serve:
 
 ```bash
-gitnexus analyze --root /path/to/vue-project --name my-vue-app --embedding
-gitnexus analyze --root /path/to/vue-project --embedding --provider local --model /models/bge-small-zh-v1.5
-gitnexus serve --port 4747
+vuenexus analyze --root /path/to/vue-project --name my-vue-app --embedding
+vuenexus analyze --root /path/to/vue-project --embedding --provider local --model /models/bge-small-zh-v1.5
+vuenexus analyze --root /path/to/vue-project --diagnostics
+vuenexus serve --port 4747
 ```
+
+`analyze` skips full TypeScript semantic diagnostics by default because they can dominate runtime on large
+projects and do not affect graph generation. Use `--diagnostics` when you explicitly want the TypeScript
+diagnostic report alongside the graph.
 
 Inspect the stored graph:
 
 ```bash
-gitnexus stats --db /path/to/vue-project/.gitnexus/lbug
-gitnexus query "getValues" --db /path/to/vue-project/.gitnexus/lbug
-gitnexus context --symbol getValues --db /path/to/vue-project/.gitnexus/lbug
-gitnexus graph --symbol UserCard --db /path/to/vue-project/.gitnexus/lbug
-gitnexus chain --from App --depth 6 --db /path/to/vue-project/.gitnexus/lbug
-gitnexus cypher "MATCH (a)-[r:CodeRelation]->(b) RETURN a.id, r.type, b.id LIMIT 20" --db /path/to/vue-project/.gitnexus/lbug
-gitnexus export --db /path/to/vue-project/.gitnexus/lbug --out graph.json
-gitnexus embed --db /path/to/vue-project/.gitnexus/lbug --provider local --model /models/bge-small-zh-v1.5
-gitnexus semantic --db /path/to/vue-project/.gitnexus/lbug --query "用户登录表单" --limit 10
+vuenexus stats --db /path/to/vue-project/.vuenexus/lbug
+vuenexus query "getValues" --db /path/to/vue-project/.vuenexus/lbug
+vuenexus context --symbol getValues --db /path/to/vue-project/.vuenexus/lbug
+vuenexus graph --symbol UserCard --db /path/to/vue-project/.vuenexus/lbug
+vuenexus chain --from App --depth 6 --db /path/to/vue-project/.vuenexus/lbug
+vuenexus cypher "MATCH (a)-[r:CodeRelation]->(b) RETURN a.id, r.type, b.id LIMIT 20" --db /path/to/vue-project/.vuenexus/lbug
+vuenexus export --db /path/to/vue-project/.vuenexus/lbug --out graph.json
+vuenexus embed --db /path/to/vue-project/.vuenexus/lbug --provider local --model /models/bge-small-zh-v1.5
+vuenexus semantic --db /path/to/vue-project/.vuenexus/lbug --query "用户登录表单" --limit 10
 ```
 
 Run MCP:
 
 ```bash
-gitnexus mcp --db /path/to/vue-project/.gitnexus/lbug
+vuenexus mcp --db /path/to/vue-project/.vuenexus/lbug
 ```
 
 ## MCP Tools
 
-The MCP server exposes GitNexus-style tool names:
+The MCP server exposes VueNexus-style tool names:
 
-- `gitnexus_query`: search indexed nodes
-- `gitnexus_semantic_search`: semantic search interface
-- `gitnexus_graph`: direct graph slice around a symbol or node id
-- `gitnexus_context`: incoming and outgoing relations for one symbol
-- `gitnexus_call_chain`: breadth-first traversal over `CALLS`, `RENDERS`, and `HANDLES`
-- `gitnexus_cypher`: run Cypher-compatible queries against LadybugDB
-- `gitnexus_stats`: node and edge totals
-- `gitnexus_export`: full graph export
+- `vuenexus_query`: search indexed nodes
+- `vuenexus_semantic_search`: semantic search interface
+- `vuenexus_graph`: direct graph slice around a symbol or node id
+- `vuenexus_context`: incoming and outgoing relations for one symbol
+- `vuenexus_call_chain`: breadth-first traversal over `CALLS`, `RENDERS`, and `HANDLES`
+- `vuenexus_unresolved_report`: grouped unresolved references that may hide impact
+- `vuenexus_impact_radius`: reverse impact slice with unresolved blockers and a `complete`/`partial` confidence flag
+- `vuenexus_cypher`: run Cypher-compatible queries against LadybugDB
+- `vuenexus_stats`: node and edge totals
+- `vuenexus_export`: full graph export
 
 ## GitNexus Web Compatibility
 
-After `gitnexus analyze`, run:
+After `vuenexus analyze`, run:
 
 ```bash
-gitnexus serve --port 4747
+vuenexus serve --port 4747
 ```
 
-The server reads `~/.gitnexus/registry.json`, opens each repo's `.gitnexus/lbug`, and exposes GitNexus-compatible HTTP endpoints such as:
+The server reads `~/.vuenexus/registry.json`, opens each repo's `.vuenexus/lbug`, and exposes the same HTTP endpoint shapes expected by the GitNexus repo's `gitnexus-web`:
 
 ```text
 /api/repos
 /api/graph?repo=<repo-name>
 ```
 
-This lets the existing GitNexus web app consume frontend-nexus results without changing the web UI.
+This lets the existing `gitnexus-web` app consume VueNexus results without changing the web UI.
 
 ## Embeddings
 
@@ -208,39 +225,97 @@ Graph generation is entirely parser/checker based. `CALLS`, `RENDERS`, `HANDLES`
 
 - embedding nodes are stored in `CodeEmbedding`
 - each row keeps `nodeId`, `chunkIndex`, `startLine`, `endLine`, `embedding`, and `contentHash`
-- `.gitnexus/meta.json` records embedding provider, model, vector dimensions, and embedding count
-- `~/.gitnexus/registry.json` gets the updated embedding count for GitNexus web/API consumers
+- `.vuenexus/meta.json` records embedding provider, model, vector dimensions, and embedding count
+- `~/.vuenexus/registry.json` gets the updated embedding count for web/API consumers
 
 Offline local model usage:
 
 ```bash
-gitnexus analyze \
+vuenexus analyze \
   --root /path/to/vue-project \
   --embedding \
   --provider local \
   --model /absolute/path/to/local/embedding-model
 ```
 
-The local provider uses `@huggingface/transformers` and is configured for offline operation by default:
+The local provider uses `@huggingface/transformers` and is configured for offline operation by default.
+When a model is bundled into the npm package at `models/embedding`, this also works without `--model`:
 
-- `GITNEXUS_LOCAL_EMBEDDING_MODEL=/absolute/path/to/local/model`
-- `GITNEXUS_TRANSFORMERS_CACHE=/absolute/path/to/cache`
-- `GITNEXUS_ALLOW_REMOTE_MODELS=1` only if you explicitly want to allow network model loading
+```bash
+vuenexus analyze --root /path/to/vue-project --embedding
+vuenexus model-info
+```
 
-For internal networks, keep `GITNEXUS_ALLOW_REMOTE_MODELS` unset and pass a local model path. The local runtime must have the model files and the platform's `onnxruntime-node` binary available before running.
+Model resolution order for `provider=local`:
+
+1. `--model /absolute/model/dir`
+2. `VUENEXUS_LOCAL_EMBEDDING_MODEL`
+3. package-bundled `models/embedding`
+4. `--model-package <npm-package>` or `VUENEXUS_LOCAL_EMBEDDING_MODEL_PACKAGE`
+5. known model packages such as `@vuenexus/embedding-model`
+
+A bundled model directory must be a Transformers.js feature-extraction model, typically:
+
+```text
+models/embedding/config.json
+models/embedding/tokenizer.json
+models/embedding/onnx/model_quantized.onnx
+```
+
+For an internal npm release:
+
+```bash
+# copy/export model files before publishing
+mkdir -p models/embedding
+# models/embedding/config.json, tokenizer.json, onnx/model_quantized.onnx, ...
+
+npm publish --registry http://your-internal-npm/
+npm install -g vuenexus --registry http://your-internal-npm/
+vuenexus model-info
+vuenexus analyze --root /path/to/vue-project --embedding
+```
+
+If the model is too large for the main package, publish a companion package with this `package.json` field:
+
+```json
+{
+  "name": "@your-scope/vuenexus-embedding-model",
+  "version": "1.0.0",
+  "files": ["models"],
+  "vuenexus": {
+    "embeddingModelPath": "models/embedding"
+  }
+}
+```
+
+Then install and use it:
+
+```bash
+npm install -g vuenexus @your-scope/vuenexus-embedding-model --registry http://your-internal-npm/
+vuenexus analyze --root /path/to/vue-project --embedding --model-package @your-scope/vuenexus-embedding-model
+```
+
+Environment variables:
+
+- `VUENEXUS_LOCAL_EMBEDDING_MODEL=/absolute/path/to/local/model`
+- `VUENEXUS_LOCAL_EMBEDDING_MODEL_PACKAGE=@your-scope/vuenexus-embedding-model`
+- `VUENEXUS_TRANSFORMERS_CACHE=/absolute/path/to/cache`
+- `VUENEXUS_ALLOW_REMOTE_MODELS=1` only if you explicitly want to allow network model loading
+
+For internal networks, keep `VUENEXUS_ALLOW_REMOTE_MODELS` unset and pass a local model path. The local runtime must have the model files and the platform's `onnxruntime-node` binary available before running.
 
 Other providers:
 
 ```bash
-gitnexus analyze --root /path/to/vue-project --embedding --provider http --model bge --name my-vue-app
-gitnexus analyze --root /path/to/vue-project --embedding --provider hash
+vuenexus analyze --root /path/to/vue-project --embedding --provider http --model bge --name my-vue-app
+vuenexus analyze --root /path/to/vue-project --embedding --provider hash
 ```
 
 `http` expects an OpenAI-compatible embedding endpoint:
 
-- `GITNEXUS_EMBEDDING_URL`
-- `GITNEXUS_EMBEDDING_MODEL`
-- `GITNEXUS_EMBEDDING_API_KEY` if the endpoint requires auth
+- `VUENEXUS_EMBEDDING_URL`
+- `VUENEXUS_EMBEDDING_MODEL`
+- `VUENEXUS_EMBEDDING_API_KEY` if the endpoint requires auth
 
 `hash` is a deterministic offline fallback for tests and smoke checks. It is not a semantic model.
 
@@ -261,11 +336,11 @@ So when validating graph correctness, it is safe to skip vectorization. Vector s
 - LadybugDB `CodeEmbedding` vector writing
 - local/offline embedding model support through `@huggingface/transformers`
 - semantic search over stored LadybugDB embeddings
-- GitNexus registry writing
-- GitNexus-compatible HTTP server
+- VueNexus registry writing
+- GitNexus web-compatible HTTP server
 - CLI graph inspection commands
-- MCP server with `gitnexus_*` tools
-- frontend-specific Codex skill under `skills/gitnexus-vue`
+- MCP server with `vuenexus_*` tools
+- frontend-specific Codex skill under `skills/vuenexus`
 
 ## Verified Projects
 
@@ -297,4 +372,4 @@ vben-use-form.vue @keydown.enter
 - Full monorepo analysis can be slow; prefer package-level roots until incremental indexing is added.
 - Template expression extraction links identifier references, but it does not execute Vue runtime behavior.
 - Third-party component internals are only linked when their source exists inside the analyzed root.
-- LadybugDB vector writing is not finalized yet; graph precision is already independent from that.
+- Embedding storage is available, but graph precision remains parser/checker based and independent from vector search.

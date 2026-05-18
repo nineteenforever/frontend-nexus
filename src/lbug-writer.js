@@ -5,7 +5,18 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import lbug from '@ladybugdb/core';
 
-export const NODE_LABELS = ['File', 'Function', 'Class', 'Interface', 'Method', 'CodeElement', 'Variable', 'Route'];
+export const NODE_LABELS = [
+  'File',
+  'Function',
+  'Class',
+  'Interface',
+  'Method',
+  'CodeElement',
+  'Variable',
+  'Route',
+  'ExternalModule',
+  'UnresolvedReference',
+];
 const REL_TYPES = [
   'DEFINES',
   'IMPORTS',
@@ -14,8 +25,11 @@ const REL_TYPES = [
   'HANDLES',
   'ROUTES_TO',
   'USES_STORE',
+  'MIXES_IN',
+  'HAS_UNRESOLVED',
 ];
 const LBUG_MAX_DB_SIZE = 16 * 1024 * 1024 * 1024;
+const COPY_CSV_OPTS = `(HEADER=true, ESCAPE='"', DELIM=',', QUOTE='"', PARALLEL=false, auto_detect=false)`;
 
 function q(value) {
   if (value === null || value === undefined) return 'NULL';
@@ -29,6 +43,40 @@ function qa(values = []) {
   return `[${values.map(q).join(', ')}]`;
 }
 
+function normalizeCopyPath(filePath) {
+  return filePath.replace(/\\/g, '/');
+}
+
+function sanitizeCSV(value) {
+  return String(value ?? '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    .replace(/[\uD800-\uDFFF]/g, '')
+    .replace(/[\uFFFE\uFFFF]/g, '');
+}
+
+function csv(value) {
+  return `"${sanitizeCSV(value).replace(/"/g, '""')}"`;
+}
+
+function csvNumber(value, fallback = -1) {
+  if (value === undefined || value === null || !Number.isFinite(Number(value))) return String(fallback);
+  return String(Number(value));
+}
+
+function csvBool(value) {
+  return value ? 'true' : 'false';
+}
+
+function csvArray(values = []) {
+  return csv(`[${values.map((value) => `'${String(value).replace(/'/g, "''")}'`).join(',')}]`);
+}
+
+function tableName(label) {
+  return label === 'Variable' ? '`Variable`' : label;
+}
+
 function safeJson(value) {
   return JSON.stringify(value ?? {});
 }
@@ -37,6 +85,8 @@ function graphNodeLabel(type) {
   if (type === 'Component' || type === 'Store') return 'Class';
   if (type === 'Composable') return 'Function';
   if (type === 'Router') return 'CodeElement';
+  if (type === 'ExternalModule') return 'ExternalModule';
+  if (type === 'UnresolvedReference') return 'UnresolvedReference';
   if (NODE_LABELS.includes(type)) return type;
   return 'CodeElement';
 }
@@ -60,8 +110,8 @@ function openDb(lbugPath, { readOnly = false } = {}) {
   );
 }
 
-export function gitnexusRegistryPath() {
-  return path.join(os.homedir(), '.gitnexus', 'registry.json');
+export function vuenexusRegistryPath() {
+  return path.join(os.homedir(), '.vuenexus', 'registry.json');
 }
 
 async function drain(result) {
@@ -84,6 +134,26 @@ async function exec(conn, query) {
   return drain(await conn.query(query));
 }
 
+async function execBatches(conn, queries, { maxChars = 1_000_000 } = {}) {
+  let batch = [];
+  let size = 0;
+  const flush = async () => {
+    if (!batch.length) return;
+    await exec(conn, `${batch.join(';\n')};`);
+    batch = [];
+    size = 0;
+  };
+
+  for (const query of queries) {
+    if (!query) continue;
+    const nextSize = query.length + 2;
+    if (batch.length && size + nextSize > maxChars) await flush();
+    batch.push(query);
+    size += nextSize;
+  }
+  await flush();
+}
+
 async function closeDb(db, conn) {
   try {
     await conn?.close?.();
@@ -102,6 +172,8 @@ const NODE_SCHEMAS = [
   `CREATE NODE TABLE CodeElement (id STRING, name STRING, filePath STRING, startLine INT64, endLine INT64, isExported BOOLEAN, content STRING, description STRING, PRIMARY KEY (id))`,
   `CREATE NODE TABLE \`Variable\` (id STRING, name STRING, filePath STRING, startLine INT64, endLine INT64, content STRING, description STRING, PRIMARY KEY (id))`,
   `CREATE NODE TABLE Route (id STRING, name STRING, filePath STRING, responseKeys STRING[], errorKeys STRING[], middleware STRING[], PRIMARY KEY (id))`,
+  `CREATE NODE TABLE ExternalModule (id STRING, name STRING, filePath STRING, startLine INT64, endLine INT64, isExported BOOLEAN, content STRING, description STRING, PRIMARY KEY (id))`,
+  `CREATE NODE TABLE UnresolvedReference (id STRING, kind STRING, name STRING, filePath STRING, startLine INT64, endLine INT64, ownerId STRING, text STRING, reason STRING, candidates STRING, attemptedResolvers STRING, description STRING, PRIMARY KEY (id))`,
   `CREATE NODE TABLE CodeEmbedding (id STRING, nodeId STRING, chunkIndex INT32, startLine INT64, endLine INT64, embedding FLOAT[], contentHash STRING, PRIMARY KEY (id))`,
 ];
 
@@ -154,6 +226,183 @@ function edgeCreateQuery(edge, nodesById) {
   `;
 }
 
+function nodeCsvFileName(label) {
+  return `${label.toLowerCase()}.csv`;
+}
+
+function nodeCsvHeader(label) {
+  if (label === 'File') return 'id,name,filePath,content';
+  if (label === 'Route') return 'id,name,filePath,responseKeys,errorKeys,middleware';
+  if (label === 'Method') {
+    return 'id,name,filePath,startLine,endLine,isExported,content,description,parameterCount,returnType';
+  }
+  if (label === 'UnresolvedReference') {
+    return 'id,kind,name,filePath,startLine,endLine,ownerId,text,reason,candidates,attemptedResolvers,description';
+  }
+  if (label === 'Variable') return 'id,name,filePath,startLine,endLine,content,description';
+  return 'id,name,filePath,startLine,endLine,isExported,content,description';
+}
+
+function nodeCsvRow(node) {
+  const label = graphNodeLabel(node.type);
+  if (label === 'File') {
+    return [csv(node.id), csv(node.name), csv(node.filePath), csv(node.content)].join(',');
+  }
+  if (label === 'Route') {
+    return [
+      csv(node.id),
+      csv(node.name),
+      csv(node.filePath),
+      csvArray([]),
+      csvArray([]),
+      csvArray([]),
+    ].join(',');
+  }
+  if (label === 'Method') {
+    return [
+      csv(node.id),
+      csv(node.name),
+      csv(node.filePath),
+      csvNumber(node.startLine),
+      csvNumber(node.endLine),
+      csvBool(Boolean(node.exported)),
+      csv(node.content),
+      csv(graphNodeDescription(node)),
+      '0',
+      csv(''),
+    ].join(',');
+  }
+  if (label === 'UnresolvedReference') {
+    return [
+      csv(node.id),
+      csv(node.meta?.kind ?? ''),
+      csv(node.name),
+      csv(node.filePath),
+      csvNumber(node.startLine, 0),
+      csvNumber(node.endLine ?? node.startLine, 0),
+      csv(node.meta?.ownerId ?? ''),
+      csv(node.content ?? node.meta?.text ?? ''),
+      csv(node.meta?.reason ?? ''),
+      csv((node.meta?.candidates ?? []).join('|')),
+      csv((node.meta?.attemptedResolvers ?? []).join('|')),
+      csv(graphNodeDescription(node)),
+    ].join(',');
+  }
+  if (label === 'Variable') {
+    return [
+      csv(node.id),
+      csv(node.name),
+      csv(node.filePath),
+      csvNumber(node.startLine),
+      csvNumber(node.endLine),
+      csv(node.content),
+      csv(graphNodeDescription(node)),
+    ].join(',');
+  }
+  return [
+    csv(node.id),
+    csv(node.name),
+    csv(node.filePath),
+    csvNumber(node.startLine),
+    csvNumber(node.endLine),
+    csvBool(Boolean(node.exported)),
+    csv(node.content),
+    csv(graphNodeDescription(node)),
+  ].join(',');
+}
+
+function nodeCopyQuery(label, csvPath) {
+  const t = tableName(label);
+  const p = normalizeCopyPath(csvPath);
+  if (label === 'File') return `COPY ${t}(id, name, filePath, content) FROM "${p}" ${COPY_CSV_OPTS}`;
+  if (label === 'Route') {
+    return `COPY ${t}(id, name, filePath, responseKeys, errorKeys, middleware) FROM "${p}" ${COPY_CSV_OPTS}`;
+  }
+  if (label === 'Method') {
+    return `COPY ${t}(id, name, filePath, startLine, endLine, isExported, content, description, parameterCount, returnType) FROM "${p}" ${COPY_CSV_OPTS}`;
+  }
+  if (label === 'UnresolvedReference') {
+    return `COPY ${t}(id, kind, name, filePath, startLine, endLine, ownerId, text, reason, candidates, attemptedResolvers, description) FROM "${p}" ${COPY_CSV_OPTS}`;
+  }
+  if (label === 'Variable') {
+    return `COPY ${t}(id, name, filePath, startLine, endLine, content, description) FROM "${p}" ${COPY_CSV_OPTS}`;
+  }
+  return `COPY ${t}(id, name, filePath, startLine, endLine, isExported, content, description) FROM "${p}" ${COPY_CSV_OPTS}`;
+}
+
+async function writeCsvFiles(graph, storagePath) {
+  const csvDir = path.join(storagePath, 'csv');
+  await fsp.rm(csvDir, { recursive: true, force: true }).catch(() => {});
+  await fsp.mkdir(csvDir, { recursive: true });
+
+  const nodesByLabel = new Map();
+  for (const node of graph.nodes.values()) {
+    const label = graphNodeLabel(node.type);
+    if (!nodesByLabel.has(label)) nodesByLabel.set(label, []);
+    nodesByLabel.get(label).push(node);
+  }
+
+  const nodeFiles = [];
+  for (const [label, nodes] of nodesByLabel) {
+    const csvPath = path.join(csvDir, nodeCsvFileName(label));
+    const rows = [nodeCsvHeader(label), ...nodes.map(nodeCsvRow)];
+    await fsp.writeFile(csvPath, `${rows.join('\n')}\n`, 'utf8');
+    nodeFiles.push({ label, csvPath, rows: nodes.length });
+  }
+
+  const nodesById = new Map([...graph.nodes.values()].map((node) => [node.id, node]));
+  const relsByPair = new Map();
+  for (const edge of graph.edges.values()) {
+    const source = nodesById.get(edge.source);
+    const target = nodesById.get(edge.target);
+    if (!source || !target) continue;
+    const fromLabel = graphNodeLabel(source.type);
+    const toLabel = graphNodeLabel(target.type);
+    const key = `${fromLabel}|${toLabel}`;
+    if (!relsByPair.has(key)) relsByPair.set(key, { fromLabel, toLabel, rows: [] });
+    relsByPair.get(key).rows.push([
+      csv(edge.source),
+      csv(edge.target),
+      csv(edge.type),
+      csvNumber(edge.confidence ?? 1, 1),
+      csv(edge.reason ?? ''),
+      csvNumber(edge.line ?? 0, 0),
+    ].join(','));
+  }
+
+  const relFiles = [];
+  for (const { fromLabel, toLabel, rows } of relsByPair.values()) {
+    const csvPath = path.join(csvDir, `rel_${fromLabel}_${toLabel}.csv`);
+    await fsp.writeFile(csvPath, `from,to,type,confidence,reason,step\n${rows.join('\n')}\n`, 'utf8');
+    relFiles.push({ fromLabel, toLabel, csvPath, rows: rows.length });
+  }
+
+  return { csvDir, nodeFiles, relFiles };
+}
+
+async function cleanupCsvFiles(csvResult) {
+  if (!csvResult?.csvDir) return;
+  await fsp.rm(csvResult.csvDir, { recursive: true, force: true }).catch(() => {});
+}
+
+async function loadGraphCsvToLbug(conn, graph, storagePath) {
+  const csvResult = await writeCsvFiles(graph, storagePath);
+  try {
+    for (const { label, csvPath } of csvResult.nodeFiles) {
+      await exec(conn, nodeCopyQuery(label, csvPath));
+    }
+    for (const { fromLabel, toLabel, csvPath } of csvResult.relFiles) {
+      const p = normalizeCopyPath(csvPath);
+      await exec(
+        conn,
+        `COPY CodeRelation FROM "${p}" (from="${fromLabel}", to="${toLabel}", HEADER=true, ESCAPE='"', DELIM=',', QUOTE='"', PARALLEL=false, auto_detect=false)`,
+      );
+    }
+  } finally {
+    await cleanupCsvFiles(csvResult);
+  }
+}
+
 function tryGit(repoPath, args) {
   try {
     return execFileSync('git', args, { cwd: repoPath, stdio: ['ignore', 'pipe', 'ignore'] })
@@ -165,7 +414,7 @@ function tryGit(repoPath, args) {
 }
 
 async function updateRegistry(repoPath, storagePath, meta, name = path.basename(repoPath)) {
-  const registryPath = gitnexusRegistryPath();
+  const registryPath = vuenexusRegistryPath();
   await fsp.mkdir(path.dirname(registryPath), { recursive: true });
   let entries = [];
   try {
@@ -188,9 +437,9 @@ async function updateRegistry(repoPath, storagePath, meta, name = path.basename(
   return name;
 }
 
-export async function writeGitNexusLbug(graph, repoPath, options = {}) {
+export async function writeVueNexusLbug(graph, repoPath, options = {}) {
   repoPath = path.resolve(repoPath);
-  const storagePath = path.join(repoPath, '.gitnexus');
+  const storagePath = path.join(repoPath, '.vuenexus');
   const lbugPath = path.join(storagePath, 'lbug');
   await fsp.mkdir(storagePath, { recursive: true });
   for (const suffix of ['', '.wal', '.lock']) {
@@ -201,13 +450,7 @@ export async function writeGitNexusLbug(graph, repoPath, options = {}) {
   const conn = new lbug.Connection(db);
   try {
     await createSchema(conn);
-    const nodes = [...graph.nodes.values()];
-    const nodesById = new Map(nodes.map((node) => [node.id, node]));
-    for (const node of nodes) await exec(conn, nodeCreateQuery(node));
-    for (const edge of graph.edges.values()) {
-      const query = edgeCreateQuery(edge, nodesById);
-      if (query) await exec(conn, query);
-    }
+    await loadGraphCsvToLbug(conn, graph, storagePath);
     await exec(conn, 'CHECKPOINT').catch(() => {});
   } finally {
     await closeDb(db, conn);
@@ -257,7 +500,7 @@ async function updateMetaAndRegistryFromLbug(lbugPath, embeddingSummary) {
   };
   await fsp.writeFile(metaPath, `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
 
-  const registryPath = gitnexusRegistryPath();
+  const registryPath = vuenexusRegistryPath();
   try {
     const entries = JSON.parse(await fsp.readFile(registryPath, 'utf8'));
     const idx = entries.findIndex((item) => path.resolve(item.storagePath ?? '') === storagePath);
@@ -269,13 +512,13 @@ async function updateMetaAndRegistryFromLbug(lbugPath, embeddingSummary) {
   } catch {}
 }
 
-export async function writeGitNexusEmbeddings(lbugPath, embeddings, summary = {}) {
+export async function writeVueNexusEmbeddings(lbugPath, embeddings, summary = {}) {
   const db = openDb(lbugPath);
   const conn = new lbug.Connection(db);
   try {
     await createSchema(conn);
     await exec(conn, 'MATCH (n:CodeEmbedding) DELETE n').catch(() => {});
-    for (const embedding of embeddings) await exec(conn, codeEmbeddingCreateQuery(embedding));
+    await execBatches(conn, embeddings.map((embedding) => codeEmbeddingCreateQuery(embedding)));
     await exec(conn, 'CHECKPOINT').catch(() => {});
   } finally {
     await closeDb(db, conn);
@@ -290,9 +533,9 @@ export async function writeGitNexusEmbeddings(lbugPath, embeddings, summary = {}
   return embeddingSummary;
 }
 
-export async function readGitNexusEmbeddings(lbugPath) {
+export async function readVueNexusEmbeddings(lbugPath) {
   try {
-    return await queryGitNexusLbug(
+    return await queryVueNexusLbug(
       lbugPath,
       'MATCH (n:CodeEmbedding) RETURN n.id AS id, n.nodeId AS nodeId, n.chunkIndex AS chunkIndex, n.startLine AS startLine, n.endLine AS endLine, n.embedding AS embedding, n.contentHash AS contentHash',
     );
@@ -303,7 +546,7 @@ export async function readGitNexusEmbeddings(lbugPath) {
   }
 }
 
-export async function queryGitNexusLbug(lbugPath, query) {
+export async function queryVueNexusLbug(lbugPath, query) {
   const db = openDb(lbugPath, { readOnly: true });
   const conn = new lbug.Connection(db);
   try {
@@ -314,5 +557,5 @@ export async function queryGitNexusLbug(lbugPath, query) {
 }
 
 export function defaultLbugPath(root = process.cwd()) {
-  return path.join(path.resolve(root), '.gitnexus', 'lbug');
+  return path.join(path.resolve(root), '.vuenexus', 'lbug');
 }

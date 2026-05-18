@@ -4,8 +4,9 @@ import { Command } from 'commander';
 import { indexFrontendProject } from './indexer.js';
 import { embedGraphToLbug, semanticSearchLbug } from './embedding.js';
 import { runMcpServer } from './mcp.js';
-import { defaultLbugPath, queryGitNexusLbug, writeGitNexusLbug } from './lbug-writer.js';
-import { buildGraph, searchGraph, serveGitNexus } from './server.js';
+import { defaultLbugPath, queryVueNexusLbug, writeVueNexusLbug } from './lbug-writer.js';
+import { localEmbeddingModelInfo } from './model-resolver.js';
+import { buildGraph, searchGraph, serveVueNexus } from './server.js';
 
 const program = new Command();
 
@@ -17,12 +18,21 @@ function print(value) {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 }
 
-program.name('gitnexus').description('Frontend-only Git Nexus for Vue projects');
+function embeddingOptions(opts) {
+  return {
+    provider: opts.provider,
+    model: opts.model,
+    modelPackage: opts.modelPackage,
+    batchSize: opts.batchSize,
+  };
+}
+
+program.name('vuenexus').description('VueNexus graph analyzer for Vue projects');
 
 async function analyzeProject(opts) {
   const root = path.resolve(opts.root);
-  const graph = indexFrontendProject(root);
-  const written = await writeGitNexusLbug(graph, root, { name: opts.name });
+  const graph = indexFrontendProject(root, { diagnostics: opts.diagnostics });
+  const written = await writeVueNexusLbug(graph, root, { name: opts.name });
   const result = {
     storagePath: written.storagePath,
     lbugPath: written.lbugPath,
@@ -33,11 +43,7 @@ async function analyzeProject(opts) {
     diagnostics: graph.diagnostics.slice(0, 25),
   };
   if (opts.embeddings || opts.embedding) {
-    result.embeddings = await embedGraphToLbug(written.lbugPath, graph.nodes.values(), {
-      provider: opts.provider,
-      model: opts.model,
-      batchSize: opts.batchSize,
-    });
+    result.embeddings = await embedGraphToLbug(written.lbugPath, graph.nodes.values(), embeddingOptions(opts));
   }
   print(result);
 }
@@ -51,7 +57,9 @@ program
   .option('--embedding', 'alias for --embeddings')
   .option('--provider <provider>', 'embedding provider for --embedding: local, http, or hash')
   .option('--model <pathOrName>', 'local model directory or HTTP model name for --embedding')
+  .option('--model-package <packageName>', 'npm package that contains a local embedding model')
   .option('--batch-size <n>', 'embedding batch size')
+  .option('--diagnostics', 'include full TypeScript semantic diagnostics; slower on large projects')
   .action(analyzeProject);
 
 program
@@ -63,7 +71,9 @@ program
   .option('--embedding', 'alias for --embeddings')
   .option('--provider <provider>', 'embedding provider for --embedding: local, http, or hash')
   .option('--model <pathOrName>', 'local model directory or HTTP model name for --embedding')
+  .option('--model-package <packageName>', 'npm package that contains a local embedding model')
   .option('--batch-size <n>', 'embedding batch size')
+  .option('--diagnostics', 'include full TypeScript semantic diagnostics; slower on large projects')
   .action(analyzeProject);
 
 program
@@ -76,15 +86,17 @@ program
   .option('--semantic', 'search embeddings instead of FTS')
   .option('--provider <provider>', 'embedding provider for semantic query: http, local, or hash')
   .option('--model <pathOrName>', 'local model directory or HTTP model name for semantic query')
+  .option('--model-package <packageName>', 'npm package that contains a local embedding model')
   .action(async (text, opts) => {
     const query = opts.query ?? text;
-    if (!query) throw new Error('gitnexus query requires query text');
+    if (!query) throw new Error('vuenexus query requires query text');
     if (opts.semantic) {
-      if (opts.provider) process.env.GITNEXUS_EMBEDDING_PROVIDER = opts.provider;
+      if (opts.provider) process.env.VUENEXUS_EMBEDDING_PROVIDER = opts.provider;
       const graph = await buildGraph(path.resolve(opts.db), true);
       print(await semanticSearchLbug(path.resolve(opts.db), graph.nodes, query, Number(opts.limit), {
         provider: opts.provider,
         model: opts.model,
+        modelPackage: opts.modelPackage,
       }));
     } else {
       print(await searchGraph(path.resolve(opts.db), query, Number(opts.limit)));
@@ -109,17 +121,17 @@ program
   .option('--db <path>', 'LadybugDB path', defaultLbug())
   .action(async (text, opts) => {
     const query = opts.query ?? text;
-    if (!query) throw new Error('gitnexus cypher requires query text');
-    print(await queryGitNexusLbug(path.resolve(opts.db), query));
+    if (!query) throw new Error('vuenexus cypher requires query text');
+    print(await queryVueNexusLbug(path.resolve(opts.db), query));
   });
 
 program
   .command('serve')
-  .description('Serve the GitNexus-compatible HTTP API for gitnexus-web')
+  .description('Serve a GitNexus web-compatible HTTP API for browsing VueNexus graphs')
   .option('--port <n>', 'port', '3000')
   .option('--host <host>', 'host', '127.0.0.1')
   .action(async (opts) => {
-    await serveGitNexus({ port: Number(opts.port), host: opts.host });
+    await serveVueNexus({ port: Number(opts.port), host: opts.host });
   });
 
 program
@@ -222,15 +234,12 @@ program
   .option('--db <path>', 'LadybugDB path', defaultLbug())
   .option('--provider <provider>', 'embedding provider: http, local, or hash')
   .option('--model <pathOrName>', 'local model directory or HTTP model name')
+  .option('--model-package <packageName>', 'npm package that contains a local embedding model')
   .option('--batch-size <n>', 'embedding batch size')
   .action(async (opts) => {
-    if (opts.provider) process.env.GITNEXUS_EMBEDDING_PROVIDER = opts.provider;
+    if (opts.provider) process.env.VUENEXUS_EMBEDDING_PROVIDER = opts.provider;
     const graph = await buildGraph(path.resolve(opts.db), true);
-    print(await embedGraphToLbug(path.resolve(opts.db), graph.nodes, {
-      provider: opts.provider,
-      model: opts.model,
-      batchSize: opts.batchSize,
-    }));
+    print(await embedGraphToLbug(path.resolve(opts.db), graph.nodes, embeddingOptions(opts)));
   });
 
 program
@@ -241,13 +250,24 @@ program
   .option('--limit <n>', 'limit', '20')
   .option('--provider <provider>', 'embedding provider for query: http, local, or hash')
   .option('--model <pathOrName>', 'local model directory or HTTP model name')
+  .option('--model-package <packageName>', 'npm package that contains a local embedding model')
   .action(async (opts) => {
-    if (opts.provider) process.env.GITNEXUS_EMBEDDING_PROVIDER = opts.provider;
+    if (opts.provider) process.env.VUENEXUS_EMBEDDING_PROVIDER = opts.provider;
     const graph = await buildGraph(path.resolve(opts.db), true);
     print(await semanticSearchLbug(path.resolve(opts.db), graph.nodes, opts.query, Number(opts.limit), {
       provider: opts.provider,
       model: opts.model,
+      modelPackage: opts.modelPackage,
     }));
+  });
+
+program
+  .command('model-info')
+  .description('Show the local embedding model that provider=local will load')
+  .option('--model <pathOrName>', 'local model directory or model package name')
+  .option('--model-package <packageName>', 'npm package that contains a local embedding model')
+  .action((opts) => {
+    print(localEmbeddingModelInfo(opts));
   });
 
 program

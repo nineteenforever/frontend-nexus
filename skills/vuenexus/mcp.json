@@ -1,15 +1,15 @@
 {
   "mcpServers": {
-    "gitnexus": {
+    "vuenexus": {
       "command": "npx",
       "args": [
         "-y",
         "--package",
-        "frontend-nexus@latest",
-        "gitnexus",
+        "vuenexus@latest",
+        "vuenexus",
         "mcp",
         "--db",
-        ".gitnexus/gitnexus.sqlite"
+        ".vuenexus/lbug"
       ]
     }
   }

@@ -1,6 +1,5 @@
 node_modules/
-.gitnexus/
-.frontend-nexus/
+.vuenexus/
 *.sqlite
 *.sqlite-*
 .DS_Store

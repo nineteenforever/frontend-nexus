@@ -1,15 +1,15 @@
 {
-  "name": "frontend-nexus",
+  "name": "vuenexus",
   "version": "0.1.0",
-  "description": "Frontend-only Git Nexus for Vue projects with precise TS/Vue call graphs.",
+  "description": "VueNexus analyzes Vue projects into precise TS/Vue graph and embedding stores.",
   "type": "module",
   "bin": {
-    "gitnexus": "src/cli.js"
+    "vuenexus": "src/cli.js"
   },
   "files": [
     "src",
-    "schema.sql",
     "skills",
+    "models",
     "README.md",
     "DESIGN.md"
   ],
@@ -21,16 +21,13 @@
   },
   "dependencies": {
     "@ladybugdb/core": "^0.16.1",
+    "@huggingface/transformers": "^4.1.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@vue/compiler-dom": "^3.5.0",
     "@vue/compiler-sfc": "^3.5.0",
-    "better-sqlite3": "^11.0.0",
     "commander": "^12.1.0",
     "typescript": "^5.4.5",
     "zod": "^3.23.8"
-  },
-  "optionalDependencies": {
-    "@huggingface/transformers": "^4.1.0"
   },
   "engines": {
     "node": ">=18.19.0"
