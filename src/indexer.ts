@@ -26,6 +26,11 @@ function rel(root, filePath) {
   return slash(path.relative(root, filePath));
 }
 
+function fileKey(filePath) {
+  const normalized = slash(path.normalize(filePath));
+  return /^[A-Za-z]:/.test(normalized) ? normalized.toLowerCase() : normalized;
+}
+
 function stableId(...parts) {
   return parts.map((p) => String(p).replace(/\s+/g, ' ').trim()).join(':');
 }
@@ -1318,7 +1323,7 @@ function collectDeclarations(graph, root, sourceFile) {
     }
   });
 
-  graph.localSymbols.set(sourceFile.fileName, fileLocal);
+  graph.localSymbols.set(fileKey(sourceFile.fileName), fileLocal);
 }
 
 function stringProperty(objectLiteral, key) {
@@ -1592,19 +1597,21 @@ function collectStoreUsage(graph, root, sourceFile, node, source, target) {
 }
 
 function localSymbolMap(graph, sourceFile) {
-  let map = graph.localSymbols.get(sourceFile.fileName);
+  const key = fileKey(sourceFile.fileName);
+  let map = graph.localSymbols.get(key);
   if (!map) {
     map = new Map();
-    graph.localSymbols.set(sourceFile.fileName, map);
+    graph.localSymbols.set(key, map);
   }
   return map;
 }
 
 function localStoreVarMap(graph, sourceFile) {
-  let map = graph.storeVars.get(sourceFile.fileName);
+  const key = fileKey(sourceFile.fileName);
+  let map = graph.storeVars.get(key);
   if (!map) {
     map = new Map();
-    graph.storeVars.set(sourceFile.fileName, map);
+    graph.storeVars.set(key, map);
   }
   return map;
 }
@@ -2171,7 +2178,10 @@ function sameDirectoryComponentTarget(graph, root, vuePath, component) {
 function addVueTemplateEdges(graph, root, vueInfoByRealPath) {
   for (const [vuePath, info] of vueInfoByRealPath) {
     const componentId = stableId('Component', rel(root, vuePath), path.basename(vuePath, '.vue'), 1);
-    const locals = graph.localSymbols.get(info.virtualFileName) ?? new Map();
+    const locals =
+      graph.localSymbols.get(fileKey(info.virtualFileName)) ??
+      graph.localSymbols.get(info.virtualFileName) ??
+      new Map();
 
     for (const component of info.template.components) {
       const target =
