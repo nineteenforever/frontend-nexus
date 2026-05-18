@@ -1,0 +1,85 @@
+✔ indexes the frontend fixture without TypeScript diagnostics (838.1114ms)
+✔ extracts all expected Vue frontend node types (716.6896ms)
+✖ preserves precise component, template, route, composable, and store edges (541.9464ms)
+  AssertionError [ERR_ASSERTION]: App :user binding should point to currentUser
+      at TestContext.<anonymous> (file:///D:/project/frontend-nexus-main/test/graph-golden.test.js:88:10)
+      at Test.runInAsyncScope (node:async_hooks:211:14)
+      at Test.run (node:internal/test_runner/test:934:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:633:18)
+      at Test.postRun (node:internal/test_runner/test:1045:19)
+      at Test.run (node:internal/test_runner/test:973:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:633:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '=='
+  }
+
+✖ captures Vue 2 options, data, props, and Vuex relationships (473.3229ms)
+  AssertionError [ERR_ASSERTION]: Vue 2 template should reference prop
+      at TestContext.<anonymous> (file:///D:/project/frontend-nexus-main/test/graph-golden.test.js:115:10)
+      at Test.runInAsyncScope (node:async_hooks:211:14)
+      at Test.run (node:internal/test_runner/test:934:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:633:18)
+      at Test.postRun (node:internal/test_runner/test:1045:19)
+      at Test.run (node:internal/test_runner/test:973:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:633:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '=='
+  }
+
+✔ records unresolved graph gaps for agents to treat impact as partial (482.775ms)
+✔ does not invent route edges for non-route path-like objects (461.0751ms)
+✔ creates offline embeddings for non-file frontend nodes (470.8549ms)
+✔ resolves an explicit local embedding model directory (3.824ms)
+✔ resolves a configured npm model package (6.5408ms)
+✔ writes VueNexus graph storage under .vuenexus by default (2293.0636ms)
+✔ uses the VueNexus registry path (0.2914ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 9
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4457.5837
+
+✖ failing tests:
+
+test at test\graph-golden.test.js:71:1
+✖ preserves precise component, template, route, composable, and store edges (541.9464ms)
+  AssertionError [ERR_ASSERTION]: App :user binding should point to currentUser
+      at TestContext.<anonymous> (file:///D:/project/frontend-nexus-main/test/graph-golden.test.js:88:10)
+      at Test.runInAsyncScope (node:async_hooks:211:14)
+      at Test.run (node:internal/test_runner/test:934:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:633:18)
+      at Test.postRun (node:internal/test_runner/test:1045:19)
+      at Test.run (node:internal/test_runner/test:973:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:633:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '=='
+  }
+
+test at test\graph-golden.test.js:98:1
+✖ captures Vue 2 options, data, props, and Vuex relationships (473.3229ms)
+  AssertionError [ERR_ASSERTION]: Vue 2 template should reference prop
+      at TestContext.<anonymous> (file:///D:/project/frontend-nexus-main/test/graph-golden.test.js:115:10)
+      at Test.runInAsyncScope (node:async_hooks:211:14)
+      at Test.run (node:internal/test_runner/test:934:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:633:18)
+      at Test.postRun (node:internal/test_runner/test:1045:19)
+      at Test.run (node:internal/test_runner/test:973:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:633:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '=='
+  }
