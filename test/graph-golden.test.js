@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import path from 'node:path';
-import { createEmbeddingsForNodes } from '../src/embedding.js';
-import { indexFrontendProject } from '../src/indexer.js';
+import { createEmbeddingsForNodes } from '../dist/embedding.js';
+import { indexFrontendProject } from '../dist/indexer.js';
 
 const fixtureRoot = path.resolve('test/fixtures/vue-app');
 
@@ -34,7 +34,7 @@ function findUnresolved(nodes, kind, text) {
 test('indexes the frontend fixture without TypeScript diagnostics', () => {
   const { graph } = graphRows();
   assert.equal(graph.diagnostics.length, 0);
-  assert.equal(graph.files, 8);
+  assert.equal(graph.files, 10);
 });
 
 test('extracts all expected Vue frontend node types', () => {
@@ -59,6 +59,8 @@ test('extracts all expected Vue frontend node types', () => {
     ['Method', 'loadUser', 'src/legacy/store.js'],
     ['Method', 'saveUser', 'src/legacy/store.js'],
     ['Variable', 'legacyMixin', 'src/legacy/mixin.js'],
+    ['Function', 'JsxWidget', 'src/render/JsxWidget.jsx'],
+    ['Function', 'TsxWidget', 'src/render/TsxWidget.tsx'],
   ];
 
   for (const [type, name, filePath] of expected) {

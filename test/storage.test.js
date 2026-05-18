@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { indexFrontendProject } from '../src/indexer.js';
-import { defaultLbugPath, vuenexusRegistryPath, writeVueNexusLbug } from '../src/lbug-writer.js';
+import { indexFrontendProject } from '../dist/indexer.js';
+import { defaultLbugPath, vuenexusRegistryPath, writeVueNexusLbug } from '../dist/lbug-writer.js';
 
 const fixtureRoot = path.resolve('test/fixtures/vue-app');
 

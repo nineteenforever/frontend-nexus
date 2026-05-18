@@ -15,6 +15,8 @@ This package does not try to support backend languages. It keeps the scanner sma
 
 ## Install
 
+VueNexus requires Node.js 20.17 or newer. Node 22 LTS is recommended for internal installs because the local embedding runtime depends on platform-specific ONNX packages.
+
 ```bash
 npm install -g vuenexus
 vuenexus analyze --root /path/to/vue-project --embedding
@@ -25,10 +27,24 @@ For local development inside this repo:
 
 ```bash
 npm install
+npm run build
 npm run check
 npm test
-node src/cli.js analyze --root /path/to/vue-project --name my-vue-app --embedding
+node dist/cli.js analyze --root /path/to/vue-project --name my-vue-app --embedding
 ```
+
+VueNexus is implemented in TypeScript and publishes compiled JavaScript from `dist`.
+
+## Supported Vue Projects
+
+VueNexus is designed for Vue frontend repositories that use:
+
+- Vue 2 Options API projects
+- Vue 3 Composition API and `<script setup>` projects
+- `.vue`, `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, and `.cjs` source files
+- TypeScript, JavaScript, TSX, and JSX scripts inside Vue SFCs
+- Pinia and Vuex store patterns
+- Vue Router route objects and lazy component imports
 
 ## Analyze Pipeline
 

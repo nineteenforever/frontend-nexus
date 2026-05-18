@@ -4,20 +4,22 @@
   "description": "VueNexus analyzes Vue projects into precise TS/Vue graph and embedding stores.",
   "type": "module",
   "bin": {
-    "vuenexus": "src/cli.js"
+    "vuenexus": "dist/cli.js"
   },
   "files": [
-    "src",
+    "dist",
     "skills",
     "models",
     "README.md",
     "DESIGN.md"
   ],
   "scripts": {
-    "check": "node --check src/*.js",
-    "test": "node --test test/*.test.js",
-    "index": "node src/cli.js index",
-    "mcp": "node src/cli.js mcp"
+    "build": "tsc",
+    "check": "tsc --noEmit",
+    "test": "npm run build && node --test test/*.test.js",
+    "prepack": "npm run build",
+    "index": "node dist/cli.js index",
+    "mcp": "node dist/cli.js mcp"
   },
   "dependencies": {
     "@ladybugdb/core": "^0.16.1",
@@ -29,7 +31,10 @@
     "typescript": "^5.4.5",
     "zod": "^3.23.8"
   },
+  "devDependencies": {
+    "@types/node": "^20.17.0"
+  },
   "engines": {
-    "node": ">=18.19.0"
+    "node": ">=20.17.0"
   }
 }

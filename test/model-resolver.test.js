@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { localEmbeddingModelInfo } from '../src/model-resolver.js';
+import { localEmbeddingModelInfo } from '../dist/model-resolver.js';
 
 function fakeModel(dir) {
   fs.mkdirSync(path.join(dir, 'onnx'), { recursive: true });

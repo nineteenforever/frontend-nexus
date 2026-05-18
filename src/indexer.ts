@@ -1,3 +1,4 @@
+// @ts-nocheck
 import fs from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
@@ -2367,6 +2368,7 @@ function createProgram(root, realFiles, virtualFiles, virtualByVueFile) {
       'declare function defineExpose<T = Record<string, unknown>>(exposed?: T): void;',
       'declare function defineSlots<T = Record<string, unknown>>(...args: any[]): T;',
       'declare function defineModel<T = unknown>(...args: any[]): Ref<T>;',
+      'declare namespace JSX { interface IntrinsicElements { [name: string]: any } }',
     ].join('\n'),
   });
 

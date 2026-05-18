@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @ts-nocheck
 import path from 'node:path';
 import { Command } from 'commander';
 import { indexFrontendProject } from './indexer.js';
