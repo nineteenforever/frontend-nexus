@@ -199,6 +199,44 @@ Run MCP:
 vuenexus mcp --db /path/to/vue-project/.vuenexus/lbug
 ```
 
+Set up opencode:
+
+```bash
+vuenexus setup
+```
+
+By default this installs:
+
+- MCP config in `~/.config/opencode/opencode.json`
+- skill file in `~/.config/opencode/skill/vuenexus/SKILL.md`
+
+On Windows, `~` is the user profile directory, so the default paths are usually:
+
+```text
+C:\Users\<you>\.config\opencode\opencode.json
+C:\Users\<you>\.config\opencode\skill\vuenexus\SKILL.md
+```
+
+The MCP entry added to opencode is:
+
+```json
+{
+  "mcp": {
+    "vuenexus": {
+      "type": "local",
+      "command": ["vuenexus", "mcp", "--db", ".vuenexus/lbug"],
+      "enabled": true
+    }
+  }
+}
+```
+
+For a project-local opencode config:
+
+```bash
+vuenexus setup --scope project
+```
+
 ## MCP Tools
 
 The MCP server exposes VueNexus-style tool names:

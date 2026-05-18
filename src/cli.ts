@@ -8,6 +8,7 @@ import { runMcpServer } from './mcp.js';
 import { defaultLbugPath, queryVueNexusLbug, writeVueNexusLbug } from './lbug-writer.js';
 import { localEmbeddingModelInfo } from './model-resolver.js';
 import { buildGraph, searchGraph, serveVueNexus } from './server.js';
+import { setupOpencode } from './setup.js';
 
 const program = new Command();
 
@@ -269,6 +270,20 @@ program
   .option('--model-package <packageName>', 'npm package that contains a local embedding model')
   .action((opts) => {
     print(localEmbeddingModelInfo(opts));
+  });
+
+program
+  .command('setup')
+  .description('Install VueNexus MCP and skill configuration for an agent')
+  .option('--agent <agent>', 'agent to configure', 'opencode')
+  .option('--scope <scope>', 'global or project opencode config', 'global')
+  .option('--db <path>', 'LadybugDB path used by the MCP server', '.vuenexus/lbug')
+  .option('--command <command>', 'command used by opencode to launch VueNexus', 'vuenexus')
+  .option('--config <path>', 'explicit opencode config path')
+  .option('--skill-dir <path>', 'explicit opencode skill directory')
+  .action(async (opts) => {
+    if (opts.agent !== 'opencode') throw new Error('vuenexus setup currently supports --agent opencode');
+    print(await setupOpencode(opts));
   });
 
 program
