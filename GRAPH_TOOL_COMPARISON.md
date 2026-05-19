@@ -1,44 +1,57 @@
-# Graph Tool Comparison: Graphify, Understand-Anything, Karpathy LLM Wiki, GitNexus
+# 图谱与代码理解工具源码对比：Graphify、Understand-Anything、Karpathy LLM Wiki、GitNexus、VueNexus
 
-This note compares four related tools from the perspective of building and using VueNexus / Frontend Nexus.
+这份文档不是 README 摘要，而是基于本地 clone 后的源码扫描整理出来的设计和实现对比。
 
-The practical question is: what are these tools for, what help do they provide to agents and developers, and which ideas should or should not be copied into a Vue-focused code graph system?
-
-## Summary
-
-| Tool | Main purpose | Best at | Not best at |
-| --- | --- | --- | --- |
-| Graphify | Turn many kinds of project material into a knowledge graph | Mixed code/docs/media exploration, HTML graph reports, agent-friendly graph navigation | Exact static call graph truth for Vue/frontend code |
-| Understand-Anything | Help agents understand a repository through a knowledge graph, dashboard, chat, onboarding, and diff impact | Productized project understanding and LLM context generation | Fully deterministic, no-missed-edge call chain analysis |
-| Karpathy LLM Wiki | Maintain a durable LLM-written wiki from raw sources | Long-term human-readable knowledge accumulation | AST parsing, call graph, graph database queries |
-| GitNexus | Build a local code graph database for agents | Code graph, MCP, Cypher, context, impact, processes, embeddings | Vue-specific precision, because Vue SFC/template parsing is generic and partly regex-based |
-
-VueNexus should keep GitNexus-style CLI, MCP, LadybugDB storage, Cypher, context, query, impact, serve, and embeddings. It should borrow UX ideas from the other tools, but it should not let LLM-generated semantic edges decide exact Vue call relationships.
-
-For precise frontend analysis, graph edges must come from deterministic parsing: Vue official SFC/compiler AST, TypeScript/JavaScript AST, import/export resolution, template AST, JSX/TSX parsing, and framework-specific rules.
-
-## 1. Graphify
-
-Repository inspected locally:
+本地阅读过的仓库路径：
 
 ```text
 /Users/yezi/Desktop/Flora/project/graphify
+/Users/yezi/Desktop/Flora/project/Understand-Anything
+/Users/yezi/Desktop/Flora/project/karpathy-llm-wiki
+/Users/yezi/Desktop/Flora/GitNexus/gitnexus
+/Users/yezi/Desktop/Flora/frontend-nexus
 ```
 
-### What It Is For
+要回答的核心问题是：
 
-Graphify is a broad knowledge graph generator. Its goal is not only source code analysis. It tries to turn a whole folder of information into a navigable graph:
+1. 这几个项目分别有什么用？
+2. 它们各自怎么设计？
+3. 源码里具体用了什么技术？
+4. 它们对 agent、开发者、代码分析有什么帮助？
+5. 如果目标是做一个前端 Vue 专用的精准图谱工具，应该学谁、避开谁？
 
-- source code
-- markdown/docs
-- papers/PDFs
-- images
-- videos
-- external notes
+## 一句话结论
 
-It outputs a graph that agents can query and humans can inspect.
+Graphify 是“万物资料图谱化”；Understand-Anything 是“让 agent 读懂项目的产品化工作流”；Karpathy LLM Wiki 是“长期沉淀的人类可读知识库”；GitNexus 是“多语言代码图数据库”；VueNexus 是“收窄到 Vue/前端后的 GitNexus 式精准图谱工具”。
 
-Typical outputs include:
+如果目标是 Vue 前端项目的精准节点、边、调用链、影响范围和 agent 可消费图谱，最应该保留的是 GitNexus 的 CLI/MCP/LadybugDB/Cypher/serve/embedding 形态，同时把解析层改成 VueNexus 当前这种 Vue 官方解析器 + TypeScript Program + 前端规则引擎。
+
+## 总览表
+
+| 项目 | 核心定位 | 主要技术 | 结果存储 | 对 agent 的价值 | 最大短板 |
+| --- | --- | --- | --- | --- | --- |
+| Graphify | 任意资料转知识图谱 | Python、NetworkX、tree-sitter、LLM 语义抽取、HTML/Neo4j/MCP 输出 | `graphify-out/graph.json`、HTML、报告、可选全局图 | 快速把代码、文档、论文、图片等变成可探索图谱 | 精确代码调用链不是第一目标，存在推断边 |
+| Understand-Anything | 代码库理解插件/产品 | TypeScript、web-tree-sitter、多语言 extractor、LLM 分析、dashboard、context builder | `.understand-anything/knowledge-graph.json` 等 | onboarding、解释文件、diff impact、给 LLM 组织上下文 | 图谱混合 LLM/agent 输出，确定性弱于专用代码图数据库 |
+| Karpathy LLM Wiki | LLM 维护的长期知识库 | `SKILL.md` 工作流、Markdown、`raw/`、`wiki/`、索引和日志 | `raw/` + `wiki/*.md` | 长期项目记忆、架构结论、业务知识沉淀 | 不做 AST，不做代码图，不做调用链 |
+| GitNexus | 多语言代码图数据库 | Node、tree-sitter、多语言 provider、LadybugDB、MCP、Cypher、embedding、process extraction | `.gitnexus/` LadybugDB、全局 registry | 精确查询代码关系、context、impact、processes、serve 给 web | 多语言通用导致复杂；Vue SFC/template 解析不够专用 |
+| VueNexus | Vue/前端专用代码图数据库 | TypeScript、`@vue/compiler-sfc`、`@vue/compiler-dom`、TypeScript Program、LadybugDB、MCP、离线 embedding | `.vuenexus/lbug`、`.vuenexus/meta.json`、`~/.vuenexus/registry.json` | 前端 agent 可直接查 Vue 组件、模板事件、调用链、影响范围 | 范围有意收窄，当前仍需继续补更多 Vue/Vite/Pinia/Nuxt 细节规则 |
+
+## 1. Graphify
+
+### 它是干什么的
+
+Graphify 的目标不是只分析代码，而是把一个目录里的“所有有价值资料”变成知识图谱。
+
+它支持的对象包括：
+
+- 代码文件
+- Markdown/文档
+- 论文/PDF
+- 图片
+- 视频
+- 人写的 note 或 rationale
+
+它最终输出：
 
 ```text
 graphify-out/graph.json
@@ -46,432 +59,762 @@ graphify-out/graph.html
 graphify-out/GRAPH_REPORT.md
 ```
 
-It also has optional integrations such as MCP and Neo4j export.
+还可以导出 Neo4j、启动 MCP server、合并 global graph。
 
-### Design Idea
+所以 Graphify 更像“资料研究和项目探索工具”，不是纯代码静态分析器。
 
-Graphify separates extraction into two broad layers:
+### 源码里的设计思路
 
-1. AST/code extraction
-   - Uses parsers such as tree-sitter for code files.
-   - Extracts structural relationships such as code symbols and calls where possible.
+Graphify 的核心设计是“两层抽取，再合并成图”：
 
-2. Semantic extraction
-   - Uses agents/LLMs for information that is not easily available through AST.
-   - Handles docs, papers, images, rationales, inferred concepts, and cross-document relationships.
+1. AST 抽取层
+   - 对代码走 parser/tree-sitter。
+   - 抽函数、类、import、call 等结构化信息。
 
-Then it merges these extraction results into a NetworkX graph. In `graphify/build.py`, the graph builder accepts node and edge dictionaries, normalizes node ids, handles legacy schemas, skips dangling external edges, and preserves edge direction metadata.
+2. 语义抽取层
+   - 对文档、论文、图片、项目概念、rationale 等走 LLM/agent。
+   - 产出 concept node、semantic edge、hyperedge。
 
-An important implementation detail is that semantic extraction can override or enrich AST extraction. That is useful for a knowledge graph, because semantic nodes can carry better labels and cross-file context. It is less ideal for exact code truth, because semantic extraction can be approximate.
+然后 `graphify/build.py` 把多个 extraction 结果合成一个 NetworkX graph。
 
-### Code Implementation Characteristics
+源码里比较关键的实现点：
 
-Important patterns seen in the implementation:
+- `build_from_json()` 接收统一的 `nodes` / `edges` / `hyperedges` JSON。
+- 图引擎用 NetworkX。
+- 支持 directed graph，但也兼容旧的 undirected graph。
+- 会把 `links` 兼容成 `edges`。
+- 会修正老 schema，例如 `source` 改成 `source_file`。
+- 会 normalize LLM 生成的 node id，尽量让语义边能连回 AST 节点。
+- 会跳过 dangling edges，例如标准库或外部依赖节点不存在时不报硬错误。
+- semantic extraction 可能覆盖 AST node 的一些属性。
 
-- Uses JSON node/edge extraction as the shared graph interchange format.
-- Uses NetworkX as the in-memory graph engine.
-- Stores graph output as JSON for reuse by query tools and visualization.
-- Supports confidence-like relationship categories such as extracted, inferred, and ambiguous.
-- Has defensive repair logic for LLM-produced ids and schema variants.
-- Supports global graph merging across repositories.
+这说明 Graphify 在源码层面承认：LLM/agent 生成的图谱信息可能不完全规整，所以需要 normalize、dedup、schema repair。
 
-This is a flexible design. It is good when the graph is a mixed knowledge artifact. It is not strict enough for "every call edge must be source-true".
+### 关键技术
 
-### What Help It Provides
+- Python
+- NetworkX
+- tree-sitter 多语言代码解析
+- JSON node-link graph
+- LLM/agent semantic extraction
+- semantic cache
+- graph merge / global graph
+- HTML graph visualization
+- Neo4j export / push
+- MCP server
+- confidence / inferred / ambiguous edge 思路
 
-Graphify is useful when an agent needs to explore a large body of mixed project knowledge. It can answer questions such as:
+### 有什么用
 
-- What are the major concepts in this repository?
-- Which docs, files, and code areas are related?
-- What are the central nodes in the project graph?
-- What surprising connections exist across communities?
-- Can I browse the project as an HTML graph?
+Graphify 对 agent 很有帮助，尤其是 agent 要读的不只是代码时。
 
-It is very useful for discovery, reporting, and project orientation.
+它适合回答：
 
-### Weakness Compared With GitNexus / VueNexus
+- 这个项目有哪些主要概念？
+- 哪些文档、代码、论文互相关联？
+- 哪些节点是中心节点？
+- 项目的知识社区怎么分布？
+- 是否能生成一个 HTML 图谱给人看？
 
-For VueNexus, the main weakness is precision. A Vue call chain should not depend on inferred LLM edges. For example, a template event handler edge, a component import edge, or a composable call edge should be proven by parser/resolver output.
+它很适合“探索、研究、总结、报告”，也适合团队把杂乱资料变成知识地图。
 
-Graphify is broad and helpful, but VueNexus needs to be narrow and exact.
+### 相比 GitNexus / VueNexus 的不足
+
+Graphify 的边可以是 `EXTRACTED`、`INFERRED`、`AMBIGUOUS`。这对知识探索很好，但对精准代码调用链是风险。
+
+VueNexus 这类工具不能让 LLM 决定：
+
+- 模板事件是否调用某个 handler
+- 某个组件是否渲染另一个组件
+- 某个 composable 是否调用 API 函数
+- 某个 route 是否加载某个页面组件
+
+这些边必须来自确定性 parser 和 resolver。
+
+所以 Graphify 可以借鉴它的报告、可视化、MCP、global graph、知识图谱体验，但不能照搬它的“语义推断边作为图谱事实”的做法。
 
 ## 2. Understand-Anything
 
-Repository inspected locally:
+### 它是干什么的
 
-```text
-/Users/yezi/Desktop/Flora/project/Understand-Anything
-```
+Understand-Anything 是一个“项目理解插件/产品”，目标是让 agent 快速读懂一个仓库。
 
-### What It Is For
+它不是只做底层图数据库，而是围绕开发者和 agent 使用体验做了一整套功能：
 
-Understand-Anything is a project-understanding system for agents. It is built around a plugin/workflow experience rather than only a graph database.
-
-Its purpose is to let an agent quickly understand a codebase and provide:
-
-- repository scan
-- knowledge graph
+- 扫描项目
+- 生成 knowledge graph
 - dashboard
 - chat/context
 - explain
-- onboarding
-- domain/layer understanding
-- diff impact analysis
-
-It is closer to a polished "agent understands this repo" product.
-
-### Design Idea
-
-Understand-Anything combines deterministic parsing and LLM-driven understanding.
-
-The core has a tree-sitter plugin for structural analysis. The plugin is designed to extract:
-
-- functions
-- classes
-- imports
-- exports
-- call graphs
-
-It supports multiple languages through configured tree-sitter extractors. The code comments in `tree-sitter-plugin.ts` describe support for TypeScript, JavaScript, Python, Go, Rust, Java, Ruby, PHP, C/C++, and C#.
-
-Above that parser layer, it adds higher-level LLM/agent workflows:
-
-- summarization
-- layer detection
-- onboarding tours
+- onboard
+- domain/layer 识别
+- diff impact
 - semantic search
-- explain contexts
-- diff analysis
 
-### Code Implementation Characteristics
+它更像“代码库理解工作台”。
 
-The implementation is more product/workflow oriented than GitNexus:
+### 源码里的设计思路
 
-- The graph is represented as knowledge graph JSON.
-- Context building searches graph nodes, expands one hop through edges, and formats the result for an LLM.
-- Diff analysis maps changed files to graph nodes and nearby affected graph nodes.
-- Tests show recovery logic for import edges when batch/agent output drops some relationships.
+它的源码分成两层：
 
-That import recovery behavior is important. It shows the system expects some graph construction output to be imperfect and then repairs it with deterministic scan results. That is fine for agent understanding. It is a warning sign if the requirement is "no wrong or missing call chain edges".
+1. 确定性结构分析层
+   - `packages/core/src/plugins/tree-sitter-plugin.ts` 里有 tree-sitter plugin。
+   - 这个 plugin 的注释和实现说明它抽取 functions、classes、imports、exports、call graphs。
+   - 支持 TypeScript、JavaScript、Python、Go、Rust、Java、Ruby、PHP、C/C++、C# 等多语言 extractor。
 
-### What Help It Provides
+2. Agent/LLM 理解层
+   - 把 graph node/edge 整理成 LLM 可用 context。
+   - 做 explain、onboard、diff impact、domain/layer 分析。
+   - 通过 dashboard 和 chat 面向用户。
 
-Understand-Anything is useful when a developer or agent needs to quickly become productive in an unfamiliar repository.
+`context-builder.ts` 的逻辑很典型：
 
-It helps answer:
+- 先用 SearchEngine 找相关节点。
+- 再沿 graph edges 扩展 1 hop。
+- 收集相关 nodes、edges、layers。
+- 格式化成 Markdown 给 LLM。
 
-- What are the important files and layers?
-- Where should I start reading?
-- What does this file do?
-- What might this change affect?
-- What context should be passed to an LLM for this question?
+`diff-analyzer.ts` 也很典型：
 
-It is especially helpful for onboarding, dashboards, and LLM-ready explanations.
+- 把 changed file 映射到 graph nodes。
+- 找 contains 子节点。
+- 找 1-hop affected nodes。
+- 输出 changed nodes、affected nodes、impacted edges、affected layers。
 
-### Weakness Compared With GitNexus / VueNexus
+还有一个很值得注意的测试：`merge-recover-imports.test.mjs`。它测试了当 batch/agent 输出漏掉 import edges 时，如何从 `scan-result.json` 的 `importMap` 恢复 imports edge。
 
-Its graph is more of a project-understanding artifact than a strict local graph database. It is not primarily designed as a Cypher-queryable, deterministic, high-precision static call-chain system.
+这说明它的图谱构建不是完全“parser 真值表”式的，它接受 LLM/agent 批处理可能漏边，然后用 deterministic scan 信息补救。
 
-For VueNexus, the useful ideas are:
+### 关键技术
 
-- onboarding summaries
-- layer/domain explanations
-- diff explanations
-- good dashboard UX
+- TypeScript
+- web-tree-sitter
+- 多语言 extractor
+- graph builder / knowledge graph JSON
+- SearchEngine
+- SemanticSearchEngine
+- LLM analyzer
+- layer detector
+- tour/onboarding generator
+- diff impact analyzer
+- dashboard
+- plugin/install scripts
 
-The risky part is relying on LLM/agent output for exact graph edges.
+### 有什么用
+
+Understand-Anything 对 agent 的帮助主要是“快速理解项目”：
+
+- 新 agent 进入仓库时知道从哪里开始读。
+- 用户问某个文件/功能时，它能拼出相关上下文。
+- 改动某个文件时，它能给出可能影响范围。
+- 可以生成 onboarding 路线和 layer/domain 解释。
+
+它不是只服务机器查询，也服务人看 dashboard。
+
+### 相比 GitNexus / VueNexus 的不足
+
+它的强项是理解和解释，不是最严格的静态代码关系数据库。
+
+对 VueNexus 来说，可以借鉴：
+
+- onboarding
+- layer/domain summary
+- diff impact 解释格式
+- dashboard
+- LLM-ready context formatting
+
+但不要让 LLM/agent 批处理成为精确调用边的来源。
 
 ## 3. Karpathy LLM Wiki
 
-Repository inspected locally:
+### 它是干什么的
+
+Karpathy LLM Wiki 和前面几个完全不同。它不是代码 analyzer，也不是图数据库，而是一个 LLM skill。
+
+它的目标是维护一个长期增长的知识库：
 
 ```text
-/Users/yezi/Desktop/Flora/project/karpathy-llm-wiki
+raw/   原始资料，不随意改写
+wiki/  LLM 编译后的知识文章
+wiki/index.md
+wiki/log.md
 ```
 
-### What It Is For
+核心理念是：LLM 写和维护 wiki，人类阅读和提问。
 
-Karpathy LLM Wiki is not a code graph tool. It is a skill and workflow for maintaining a durable wiki.
+### 源码里的设计思路
 
-The core idea is:
-
-- `raw/` stores immutable source material.
-- `wiki/` stores LLM-compiled knowledge articles.
-- `wiki/index.md` indexes the knowledge base.
-- `wiki/log.md` records operations.
-
-The LLM ingests sources, writes/updates wiki articles, and answers future questions from the wiki.
-
-### Design Idea
-
-This tool treats knowledge as a long-lived markdown artifact instead of a computed graph database.
-
-It has three main operations:
+这个仓最核心的文件是 `SKILL.md`。它定义了三类操作：
 
 1. Ingest
-   - Fetch or receive source material.
-   - Store it under `raw/`.
-   - Compile or merge it into `wiki/`.
+   - 把外部资料放入 `raw/`。
+   - 选择或创建 topic。
+   - 编译成 `wiki/<topic>/<article>.md`。
+   - 如果新资料影响已有文章，就 cascade update。
 
 2. Query
-   - Read `wiki/index.md`.
-   - Find relevant pages.
-   - Answer with citations to wiki pages.
+   - 先读 `wiki/index.md`。
+   - 再读相关文章。
+   - 基于 wiki 回答，而不是凭模型记忆回答。
+   - 回答里引用 wiki 页面。
 
 3. Lint
-   - Check index consistency, links, raw references, missing cross-links, outdated claims, and contradictions.
+   - 检查 index 和实际文件是否一致。
+   - 检查内部链接。
+   - 检查 raw 引用。
+   - 检查明显缺失的 see also。
+   - 报告事实冲突、过期 claims、孤儿页面等。
 
-### Code Implementation Characteristics
+它的“实现”不是传统代码，而是 skill workflow + markdown schema。
 
-The implementation is mostly a `SKILL.md` instruction set plus templates. It is intentionally simple:
+### 关键技术
 
-- No AST parser.
-- No graph database.
-- No call graph.
-- No symbol resolver.
-- Markdown is the storage layer.
-- Human-readable files are the primary interface.
+- Codex/agent skill 设计
+- Markdown durable storage
+- `raw/` / `wiki/` 双层资料模型
+- `index.md` 作为检索入口
+- `log.md` 作为操作审计
+- ingest/query/lint 工作流
+- 人类可读、git 可 diff 的知识库
 
-This is a strength for durable knowledge, but it is not a replacement for GitNexus or VueNexus.
+### 有什么用
 
-### What Help It Provides
+它对项目长期维护非常有用。
 
-It helps with long-term project memory:
+适合沉淀：
 
-- architecture notes
-- business rules
-- design decisions
-- important explanations
-- past investigation results
-- onboarding documents
+- 架构原则
+- 业务规则
+- 历史决策
+- 踩坑记录
+- 重要调用链解释
+- 项目 glossary
+- agent 分析过的结论
 
-It is useful after a graph analyzer has found facts. For example, VueNexus could generate or support wiki pages that explain important flows discovered from the graph.
+例如 VueNexus 找出一条长调用链后，可以把“这条调用链为什么重要、业务上代表什么、以后改哪里要小心”沉淀到 wiki。
 
-### Weakness Compared With GitNexus / VueNexus
+### 相比 GitNexus / VueNexus 的不足
 
-It cannot answer exact static graph questions by itself:
+它不做：
 
-- Which function calls this function?
-- Which template event reaches this composable?
-- Which component imports this component?
-- Which process is affected by this changed line?
+- AST 解析
+- import/export resolution
+- symbol graph
+- call graph
+- Cypher 查询
+- embedding 存储
+- impact radius
 
-Those require parser-backed graph data.
+所以它不能替代 VueNexus，但可以成为 VueNexus 上层的知识沉淀系统。
 
 ## 4. GitNexus
 
-Repository inspected locally:
+### 它是干什么的
+
+GitNexus 是这几个里面最接近“代码图数据库”的项目。
+
+它分析代码仓库，把符号、调用、模块、过程、上下文等写入本地 LadybugDB，然后通过 CLI、MCP、server、Cypher 给 agent 和 web UI 使用。
+
+典型用法：
 
 ```text
-/Users/yezi/Desktop/Flora/GitNexus/gitnexus
+gitnexus analyze
+gitnexus query
+gitnexus context
+gitnexus cypher
+gitnexus serve
+gitnexus mcp
 ```
 
-### What It Is For
+### 源码里的设计思路
 
-GitNexus is a local code graph database for AI agents. It is designed to analyze repositories, store the result locally, and expose the graph through CLI, MCP, server APIs, and Cypher.
+GitNexus 是大型多语言 pipeline。
 
-Important user-facing capabilities:
+从源码里可以看到它的分析流程大致包括：
 
-- `gitnexus analyze`
-- `gitnexus query`
-- `gitnexus context`
-- `gitnexus cypher`
-- `gitnexus serve`
-- MCP tools such as query, context, impact, detect changes, rename, and cypher
-- semantic embeddings for better search
-- process/call-chain discovery
+1. scan
+   - 找到仓库文件。
+   - 根据 supported languages 判断可分析文件。
 
-Its local database is LadybugDB, stored under `.gitnexus/`.
+2. structure
+   - 先建立项目结构、文件层级和基础节点。
 
-### Design Idea
+3. parse
+   - 通过 tree-sitter worker 解析多语言源码。
+   - 支持 TypeScript、JavaScript、Python、Java、C/C++、C#、Go、Rust、PHP、Ruby 等。
 
-GitNexus is much more code-graph oriented than the other three tools.
+4. import / route / tool / ORM extraction
+   - 抽 import/export。
+   - 抽路由。
+   - 抽 MCP/RPC tool。
+   - 抽 ORM/query 相关信息。
 
-Its ingestion pipeline is roughly:
+5. cross-file resolution
+   - 把跨文件引用重新解析到目标符号。
 
-1. Scan repository files.
-2. Detect structure.
-3. Parse supported languages with tree-sitter.
-4. Extract imports, symbols, routes, tools, ORM/query patterns, and calls.
-5. Resolve cross-file relationships.
-6. Run scope resolution.
-7. Build communities/clusters.
-8. Build processes/execution flows.
-9. Store the graph in LadybugDB.
-10. Optionally generate embeddings for semantic search.
+6. scope resolution
+   - 更精细地绑定作用域、receiver、继承、方法调用等关系。
 
-This design is well suited to agent consumption because agents can query precise graph data instead of repeatedly reading the whole repository.
+7. communities / clusters
+   - 对图做聚类。
 
-### Code Implementation Characteristics
+8. processes
+   - 从调用关系里抽执行流/过程。
 
-GitNexus has a large and mature implementation:
+9. embedding
+   - 可选生成 semantic embeddings。
 
-- Many language providers and extractors.
-- Tree-sitter workers.
-- Import resolvers.
-- Cross-file resolution.
-- Scope resolution.
-- LadybugDB adapter and CSV bulk loading.
-- MCP resources and tools.
-- Server API.
-- Embedding pipeline.
-- Process extraction.
+10. LadybugDB write
+   - 写入本地图数据库。
 
-This makes it powerful, but also heavy.
+### 关键技术
 
-For Vue specifically, GitNexus currently treats Vue SFCs by extracting script blocks and then parsing the extracted script with the TypeScript grammar. Its Vue SFC extractor uses regular expressions for:
+- Node.js
+- tree-sitter 原生 parser
+- 多语言 provider / extractor / resolver
+- worker 解析
+- parse cache
+- import resolver
+- cross-file resolution
+- scope resolution
+- route/tool/ORM extraction
+- graph clustering
+- process extraction
+- LadybugDB
+- Cypher-compatible query
+- MCP stdio server
+- HTTP server / web API
+- local and remote embeddings
+- global registry
 
-- `<script>` / `<script setup>` extraction
-- PascalCase component detection in `<template>`
+### Vue 支持的源码细节
 
-That is workable for common cases, but it is not enough for maximum Vue precision. Vue templates are not just strings. They have directives, events, slots, refs, dynamic components, macros, binding expressions, and compile-time behavior. A Vue-focused analyzer should use Vue official compiler APIs instead of regex.
+GitNexus 支持 `.vue`，但支持方式偏通用。
 
-### What Help It Provides
+在 `src/core/ingestion/vue-sfc-extractor.ts` 可以看到：
 
-GitNexus helps agents do code work with much less blind searching:
+- 用正则提取 `<script>` / `<script setup>`。
+- 提取出来后交给 TypeScript tree-sitter grammar。
+- 如果同时存在 `<script>` 和 `<script setup>`，偏向 setup block。
+- template 里的组件使用通过 PascalCase 正则扫描。
 
-- Find symbols and their relationships.
-- Ask for context around a function/component/module.
-- Query the graph with Cypher.
-- Understand impact before changing code.
-- Read execution processes instead of individual disconnected files.
-- Use embeddings for semantic search when names are not enough.
-- Serve the graph to a web UI.
+这对普通 `.vue` 文件有帮助，但它不是 Vue 官方 AST。
 
-This is the closest existing design to VueNexus.
+Vue template 里有很多不能靠正则准确表达的东西：
 
-### Weakness Compared With VueNexus
+- `@click="foo(bar)"`
+- `v-on="{ click: foo }"`
+- `:is="currentComponent"`
+- `v-slot`
+- `v-for` 作用域
+- `ref`
+- `defineProps`
+- `defineEmits`
+- `defineExpose`
+- Options API methods/computed/watch
+- Composition API return binding
+- JSX/TSX 组件引用
 
-GitNexus is broad by design. It supports many languages, so its abstractions must be generic.
+GitNexus 的多语言通用性很强，但 Vue 专用精度不是它的设计中心。
 
-For frontend Vue projects, that broadness becomes a weakness:
+### 有什么用
 
-- More code than needed.
-- More parser branches than needed.
-- Vue SFC/template handling is not deep enough.
-- Framework-specific frontend relationships are harder to model precisely.
-- The graph may miss Vue-specific edges or produce coarse relationships.
+GitNexus 对 agent 非常有用：
 
-VueNexus should be smaller, frontend-only, and stricter.
+- agent 不必每次全仓搜索。
+- 可以直接查 symbol context。
+- 可以查某个改动的 impact。
+- 可以查调用链/process。
+- 可以通过 MCP 暴露给 Claude/Codex/opencode。
+- 可以通过 Cypher 做任意图查询。
+- 可以 serve 给 web UI 看。
+- embedding 让语义搜索更好用。
 
-## Why VueNexus Should Exist
+它是 VueNexus 最应该继承的基础范式。
 
-The four tools show four different philosophies:
+### 相比 VueNexus 的不足
 
-1. Graphify: broad knowledge graph for anything.
-2. Understand-Anything: agent UX for repository understanding.
-3. Karpathy LLM Wiki: durable human-readable memory.
-4. GitNexus: local code graph database for agent tools.
+GitNexus 的问题不是能力弱，而是范围太大。
 
-VueNexus should be closest to GitNexus in storage and usage, but much narrower in analysis scope.
+多语言通用会导致：
 
-The goal is:
+- 代码量大。
+- 抽象层多。
+- 前端框架规则不容易做得极细。
+- Vue SFC/template 只能作为多语言之一处理。
+- 对“只分析 Vue 前端项目”的用户来说，有很多不需要的复杂度。
+
+VueNexus 的价值就是把范围收窄，换取前端图谱精度。
+
+## 5. VueNexus
+
+### 它是干什么的
+
+VueNexus 是一个 Vue/前端专用的代码图谱工具，目标是保留 GitNexus 式使用体验，但只服务前端项目。
+
+当前身份和用法是：
 
 ```text
-GitNexus-like interface + GitNexus-like storage + Vue/frontend-specific parser precision
+npm package: vuenexus
+CLI: vuenexus
+local db: .vuenexus/lbug
+metadata: .vuenexus/meta.json
+registry: ~/.vuenexus/registry.json
+MCP tools: vuenexus_*
 ```
 
-That means:
-
-- Keep CLI compatibility where possible.
-- Keep MCP compatibility for agents.
-- Keep LadybugDB graph storage.
-- Keep Cypher and context/query workflows.
-- Keep serve/web compatibility where practical.
-- Keep embeddings as search enhancement.
-- Remove non-frontend language complexity.
-- Make Vue/TS/JS/JSX/TSX/SFC parsing the center of the system.
-
-## What VueNexus Should Borrow
-
-From Graphify:
-
-- Good graph reports.
-- Easy agent setup.
-- HTML/visual graph output ideas.
-- Global project graph ideas.
-- Clear distinction between extracted and inferred knowledge.
-
-From Understand-Anything:
-
-- Dashboard/onboarding UX.
-- Diff impact explanation.
-- Layer/domain summaries.
-- LLM-ready context formatting.
-
-From Karpathy LLM Wiki:
-
-- Durable markdown explanations.
-- Project memory that survives beyond one scan.
-- Human-readable architecture notes generated from graph facts.
-
-From GitNexus:
-
-- LadybugDB storage.
-- CLI and MCP shape.
-- Cypher queries.
-- Context, query, impact, processes.
-- Embedding storage.
-- Local-first agent consumption.
-
-## What VueNexus Should Avoid
-
-VueNexus should avoid using LLM inference as the source of truth for code relationships.
-
-LLMs can help explain graph results, summarize flows, or generate documentation. They should not decide whether these edges exist:
-
-- component uses component
-- template event calls handler
-- handler calls composable function
-- composable imports API client
-- route loads page component
-- store action calls service
-- prop/emit relationship exists
-- JSX tag refers to imported component
-
-Those edges should come from deterministic parsing and resolution.
-
-## Practical Usefulness For Agents
-
-A precise VueNexus graph helps agents by reducing expensive and error-prone repository reading.
-
-Instead of asking an agent to scan hundreds of files every time, the agent can ask:
+典型命令：
 
 ```text
-vuenexus context LoginPage
-vuenexus query "where is useAuth called"
-vuenexus cypher "MATCH ..."
-vuenexus impact src/pages/login/LoginPage.vue
+vuenexus analyze --root /path/to/vue-project --embedding
+vuenexus query "useAuth"
+vuenexus context --symbol LoginPage
+vuenexus chain --from App --depth 6
+vuenexus cypher "MATCH (a)-[r:CodeRelation]->(b) RETURN a,r,b LIMIT 20"
+vuenexus serve --port 4747
+vuenexus mcp --db .vuenexus/lbug
+vuenexus setup
 ```
 
-The agent gets a graph-backed answer with file locations and relationships.
+### 源码里的设计思路
 
-This helps with:
-
-- code review
-- refactoring
-- bug tracing
-- onboarding
-- impact analysis
-- feature implementation
-- route/component/composable tracing
-- test planning
-- migration from Vue 2 to Vue 3
-- finding dead or central components
-
-## Final Judgment
-
-Graphify, Understand-Anything, and Karpathy LLM Wiki are useful, but they solve adjacent problems.
-
-GitNexus is the strongest base for a code graph system. VueNexus should follow GitNexus for interface and storage, while specializing the parser and resolver layer for frontend Vue projects.
-
-For this project, the key principle is:
+VueNexus 的设计思路是：
 
 ```text
-Use deterministic parsers for graph truth.
-Use embeddings for search.
-Use LLMs for explanation.
-Use markdown/wiki/report output for human memory.
+GitNexus 的使用形态 + Vue/前端专用解析器 + LadybugDB 存储 + MCP/CLI/serve 给 agent 消费
 ```
 
-That keeps VueNexus small, useful, and accurate.
+它不是再做一个泛语言平台，而是把精力放在这些前端文件上：
+
+```text
+.vue
+.ts
+.tsx
+.js
+.jsx
+.mjs
+.cjs
+```
+
+核心入口在 `src/indexer.ts`。
+
+分析流程大致是：
+
+1. 文件扫描
+   - 只包含前端源码扩展名。
+   - 忽略 `.git`、`node_modules`、`dist`、`build`、`.nuxt`、`.output`、`coverage`、`.vuenexus` 等目录。
+
+2. Vue SFC 解析
+   - 使用 `@vue/compiler-sfc` 的 `parse`。
+   - 每个 `.vue` 文件成为一个 `Component` node。
+   - `<script>` 和 `<script setup>` 被转换成虚拟 `.vue.ts`。
+   - 建立虚拟 TS 文件行号到真实 `.vue` 行号的映射。
+
+3. Vue template 解析
+   - 使用 `@vue/compiler-dom` 的 `baseParse`。
+   - 从 template AST 提取组件使用、事件 handler、表达式引用等。
+
+4. TypeScript Program
+   - 真实 `.ts/.tsx/.js/.jsx/.mjs/.cjs` 加入一个 TypeScript Program。
+   - `.vue` 文件的 script 部分作为虚拟 `.vue.ts` 加入 Program。
+   - 通过 TypeScript checker 做符号解析。
+
+5. import/export resolution
+   - 解析相对路径、index 文件、`.vue` 组件、TS/JS/JSX/TSX。
+   - `.vue` import 会映射到虚拟 script，但图节点仍指向真实 `.vue` 文件。
+
+6. 前端框架规则
+   - Vue component node。
+   - script setup 顶层 binding。
+   - Options API default export。
+   - Vuex store/action/mutation/getter/state。
+   - router route object。
+   - JSX/TSX component usage。
+   - template component rendering。
+   - template event handler。
+
+7. 图构建
+   - 产生 node 和 edge。
+   - 关系类型包括 `CALLS`、`RENDERS`、`HANDLES`、`ROUTES_TO` 等。
+   - unresolved 引用不会假装成功，会进入 unresolved report。
+
+8. LadybugDB 写入
+   - `src/lbug-writer.ts` 创建 LadybugDB node table 和 relation table。
+   - 图数据库写到 `.vuenexus/lbug`。
+   - 元信息写到 `.vuenexus/meta.json`。
+   - 全局 registry 写到 `~/.vuenexus/registry.json`。
+
+9. embedding
+   - embedding 不参与图谱精度。
+   - 图谱先由 parser/checker 生成，再可选生成向量。
+   - 向量写入 LadybugDB 的 `CodeEmbedding` node table。
+
+10. MCP / CLI / serve
+   - CLI 在 `src/cli.ts`。
+   - MCP 在 `src/mcp.ts`。
+   - serve/web API 在 `src/server.ts`。
+   - setup/opencode 自动配置在 `src/setup.ts`。
+
+### 关键技术
+
+VueNexus 当前关键技术包括：
+
+- TypeScript
+- `@vue/compiler-sfc`
+- `@vue/compiler-dom`
+- TypeScript Compiler API / TypeChecker
+- Vue SFC virtual file
+- Vue virtual line mapping
+- import/export resolver
+- template AST traversal
+- script setup binding analysis
+- Options API object analysis
+- Vuex helper/action/mutation/getter/state 识别
+- router object 识别
+- JSX/TSX 支持
+- LadybugDB
+- Cypher-compatible query
+- `@modelcontextprotocol/sdk`
+- MCP stdio server
+- commander CLI
+- HTTP server for GitNexus-web-compatible browsing
+- local/offline embedding model resolver
+- `@huggingface/transformers` local embedding
+- OpenAI-compatible HTTP embedding endpoint
+- hash provider for lightweight/dev embedding
+- opencode skill and MCP setup
+
+### 存储实现
+
+VueNexus 保持和 GitNexus 类似的本地-first 图数据库思路。
+
+本地项目内：
+
+```text
+<project>/.vuenexus/lbug
+<project>/.vuenexus/meta.json
+```
+
+用户全局：
+
+```text
+~/.vuenexus/registry.json
+```
+
+embedding 存在 LadybugDB 的 `CodeEmbedding`：
+
+```text
+id
+nodeId
+chunkIndex
+startLine
+endLine
+embedding
+contentHash
+```
+
+这和 GitNexus 的理念一致：图和向量都在本地，agent 可以离线消费。
+
+### MCP 实现
+
+VueNexus MCP tools 使用 `vuenexus_*` 命名。
+
+当前包括：
+
+- `vuenexus_query`
+- `vuenexus_semantic_search`
+- `vuenexus_graph`
+- `vuenexus_context`
+- `vuenexus_call_chain`
+- `vuenexus_unresolved_report`
+- `vuenexus_impact_radius`
+- `vuenexus_cypher`
+- `vuenexus_stats`
+- `vuenexus_export`
+
+这意味着 opencode、Codex、Claude 或其他 MCP agent 可以直接读取已经分析好的前端图谱。
+
+### 有什么用
+
+VueNexus 对前端 agent 的价值是：把“读仓库”变成“查图谱”。
+
+agent 可以更快完成：
+
+- 找组件被谁渲染。
+- 找模板事件最终调用哪个函数。
+- 找某个 composable 被哪些页面使用。
+- 找 route 对应哪个页面组件。
+- 找 Vuex action/mutation 影响范围。
+- 找 JSX/TSX 里使用的组件。
+- 查一个 symbol 的上下文。
+- 查一个改动的反向影响范围。
+- 导出完整图给其他 agent 或内网系统。
+- 用 embedding 做语义搜索，但不影响图谱事实。
+
+### 当前相对 GitNexus 的优势
+
+VueNexus 的优势来自“少做，但做深”：
+
+- 不需要支持 Python/Java/Go/Rust/PHP 等后端语言。
+- 可以把 `.vue` 当作一等公民，而不是预处理成普通 TS。
+- 使用 Vue 官方 parser，而不是 regex。
+- template AST 可以产生前端专属边。
+- TS Program 可以统一处理 `.vue` 虚拟脚本和真实 TS/JS 文件。
+- 可以把 Vue Options API、Composition API、Vuex、router、JSX/TSX 放进同一套前端图谱语义。
+
+### 当前还需要继续加强的地方
+
+VueNexus 当前已经有核心框架，但如果目标是“极高精度”，后续还应该继续补：
+
+- Pinia store 识别。
+- Nuxt file-based route 识别。
+- Vue Router 动态 import 更细解析。
+- provide/inject 关系。
+- defineEmits 到 parent listener 的更强绑定。
+- defineExpose/ref 调用关系。
+- template scope 的更完整类型绑定。
+- `v-model` 到 prop/update event 的双向关系。
+- slot scope 和 scoped slot 关系。
+- auto import 生态，如 unplugin-auto-import、components.d.ts。
+- Vite alias、tsconfig paths、monorepo workspace resolver。
+
+这些都应该用确定性解析和项目配置解析来做，不应该靠 LLM 猜。
+
+## 五个项目的设计差异
+
+### 数据真值来源不同
+
+Graphify 的真值来源是 AST + LLM semantic extraction。它允许 inferred 和 ambiguous。
+
+Understand-Anything 的真值来源是 parser + agent/LLM workflow。它重视可解释上下文和产品体验。
+
+Karpathy LLM Wiki 的真值来源是 raw source + LLM 整理后的 wiki，人类可读优先。
+
+GitNexus 的真值来源主要是 parser/resolver，然后写入 LadybugDB，适合机器查询。
+
+VueNexus 的真值来源应该只来自 Vue/TS/JS parser 和 resolver。LLM 只能解释，不能造边。
+
+### 存储模型不同
+
+Graphify：
+
+```text
+graphify-out/graph.json
+graphify-out/graph.html
+graphify-out/GRAPH_REPORT.md
+optional global graph / Neo4j
+```
+
+Understand-Anything：
+
+```text
+.understand-anything/knowledge-graph.json
+dashboard/context/onboarding artifacts
+```
+
+Karpathy LLM Wiki：
+
+```text
+raw/
+wiki/
+wiki/index.md
+wiki/log.md
+```
+
+GitNexus：
+
+```text
+.gitnexus/ LadybugDB
+~/.gitnexus/registry.json
+```
+
+VueNexus：
+
+```text
+.vuenexus/lbug
+.vuenexus/meta.json
+~/.vuenexus/registry.json
+```
+
+### 面向对象不同
+
+Graphify 面向“任意资料图谱化”。
+
+Understand-Anything 面向“agent 和人快速理解仓库”。
+
+Karpathy LLM Wiki 面向“长期知识沉淀”。
+
+GitNexus 面向“多语言代码图谱和 agent 查询”。
+
+VueNexus 面向“Vue/前端项目的精确代码图谱和 agent 查询”。
+
+## 对 VueNexus 的具体启发
+
+### 可以从 Graphify 学什么
+
+- 图谱报告。
+- HTML 可视化。
+- global graph。
+- agent 安装体验。
+- 明确标注 extracted/inferred 的思路。
+
+但 VueNexus 里，如果以后有 inferred edge，也必须和 parser edge 分开，不能进入精确调用链。
+
+### 可以从 Understand-Anything 学什么
+
+- onboarding 体验。
+- dashboard。
+- diff impact 的人类解释。
+- layer/domain summary。
+- 给 LLM 整理上下文的格式。
+
+但精确边不要依赖 LLM 批处理。
+
+### 可以从 Karpathy LLM Wiki 学什么
+
+- 把分析结论沉淀成 Markdown。
+- 让 agent 的调查结果可追溯、可复用。
+- 给团队保存业务语义和架构解释。
+
+它适合作为 VueNexus 的上层知识库，不适合作为底层图谱。
+
+### 可以从 GitNexus 学什么
+
+- CLI/MCP/server 的形态。
+- LadybugDB 本地存储。
+- Cypher 查询。
+- context/query/impact/processes。
+- registry。
+- embedding 和图谱分离。
+- web UI 消费图数据库。
+
+VueNexus 当前就是沿这个方向做的。
+
+## 最终判断
+
+这五个工具不是互相完全替代，而是在不同层级解决问题：
+
+```text
+Graphify              泛资料知识图谱
+Understand-Anything   项目理解产品和 agent 上下文
+Karpathy LLM Wiki     长期知识沉淀
+GitNexus              多语言代码图数据库
+VueNexus              Vue/前端专用代码图数据库
+```
+
+如果目标是公司内网里让任意 agent 消费 Vue 前端项目图谱，VueNexus 应该坚持这个原则：
+
+```text
+parser/checker 决定图谱事实
+LadybugDB 保存图谱和向量
+MCP/CLI/server 暴露能力
+embedding 增强搜索
+LLM 只负责解释和总结
+Markdown/wiki/report 负责长期沉淀
+```
+
+这样 VueNexus 才能同时满足三个要求：
+
+1. 用法像 GitNexus 一样稳定。
+2. 对 Vue/前端项目比 GitNexus 更精准。
+3. 输出结果能被 opencode、Codex、Claude、内网 agent 和 web UI 反复消费。
