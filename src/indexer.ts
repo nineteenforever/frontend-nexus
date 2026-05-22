@@ -661,6 +661,7 @@ function createGraph(root) {
   const localSymbols = new Map();
   const componentNames = new Map();
   const storeVars = new Map();
+  const checkerFailures = [];
 
   const addNode = (node) => {
     nodes.set(node.id, { meta: {}, ...node });
@@ -721,7 +722,20 @@ function createGraph(root) {
     return id;
   };
 
-  return { root, nodes, edges, byDeclaration, localSymbols, componentNames, storeVars, addNode, addEdge, addUnresolved };
+  return {
+    root,
+    nodes,
+    edges,
+    byDeclaration,
+    localSymbols,
+    componentNames,
+    storeVars,
+    checkerFailures,
+    typeCheckerDisabled: false,
+    addNode,
+    addEdge,
+    addUnresolved,
+  };
 }
 
 function componentAliasNames(name) {
@@ -950,10 +964,52 @@ function thisMemberTarget(graph, sourceFile, callee) {
   return undefined;
 }
 
+function isRecoverableTypeCheckerError(err) {
+  return (
+    err instanceof RangeError ||
+    /Maximum call stack size exceeded|call stack/i.test(String(err?.message ?? err))
+  );
+}
+
+function safeCheckerCall(graph, sourceFile, node, operation, fn) {
+  if (graph.typeCheckerDisabled) return undefined;
+  try {
+    return fn();
+  } catch (err) {
+    if (!isRecoverableTypeCheckerError(err)) throw err;
+    graph.typeCheckerDisabled = true;
+    graph.checkerFailures.push({
+      file: rel(graph.root, sourceFile.realPath ?? sourceFile.fileName),
+      line: node ? sourceLine(sourceFile, node) : 0,
+      message: `TypeScript checker failed during ${operation}: ${err instanceof Error ? err.message : String(err)}. Falling back to AST-only resolution for the rest of analyze.`,
+    });
+    return undefined;
+  }
+}
+
+function safeAliasedSymbol(graph, sourceFile, node, checker, symbol, operation) {
+  if (!symbol || !(symbol.flags & ts.SymbolFlags.Alias)) return symbol;
+  return safeCheckerCall(graph, sourceFile, node, `${operation}: getAliasedSymbol`, () =>
+    checker.getAliasedSymbol(symbol),
+  );
+}
+
+function localCalleeTarget(graph, sourceFile, callee) {
+  if (ts.isIdentifier(callee)) {
+    const local = localSymbolMap(graph, sourceFile).get(callee.text);
+    if (local && graph.nodes.has(local)) return local;
+  }
+  return undefined;
+}
+
 function resolvedCallTarget(graph, checker, expr) {
   const callee = ts.isCallExpression(expr) || ts.isNewExpression(expr) ? expr.expression : expr.tag;
   const localThisTarget = thisMemberTarget(graph, expr.getSourceFile(), callee);
-  const sig = checker.getResolvedSignature(expr);
+  const localTarget = localCalleeTarget(graph, expr.getSourceFile(), callee);
+  if (localTarget) return localTarget;
+  const sig = safeCheckerCall(graph, expr.getSourceFile(), expr, 'call signature resolution', () =>
+    checker.getResolvedSignature(expr),
+  );
   const decl = sig?.declaration;
   if (decl) {
     const target = declarationTarget(graph, decl);
@@ -962,12 +1018,13 @@ function resolvedCallTarget(graph, checker, expr) {
     if (localThisTarget && (!targetNode || targetNode.type === 'Class')) return localThisTarget;
     if (target) return target;
   }
-  const symbol = checker.getSymbolAtLocation(callee);
+  const symbol = safeCheckerCall(graph, expr.getSourceFile(), callee, 'call symbol resolution', () =>
+    checker.getSymbolAtLocation(callee),
+  );
+  const aliased = safeAliasedSymbol(graph, expr.getSourceFile(), callee, checker, symbol, 'call symbol resolution');
   const declarations = [
     ...(symbol?.getDeclarations() ?? []),
-    ...(symbol && (symbol.flags & ts.SymbolFlags.Alias)
-      ? checker.getAliasedSymbol(symbol).getDeclarations() ?? []
-      : []),
+    ...(aliased && aliased !== symbol ? aliased.getDeclarations() ?? [] : []),
   ];
   for (const declaration of declarations) {
     const target = declarationTarget(graph, declaration);
@@ -1002,6 +1059,23 @@ function importLocalIdentifiers(importClause) {
   return names;
 }
 
+function importLocalIdentifierBindings(importClause) {
+  if (!importClause) return [];
+  const bindings = [];
+  if (importClause.name) bindings.push({ local: importClause.name, importedName: 'default', isDefault: true });
+  const namedBindings = importClause.namedBindings;
+  if (namedBindings && ts.isNamedImports(namedBindings)) {
+    for (const element of namedBindings.elements) {
+      bindings.push({
+        local: element.name,
+        importedName: (element.propertyName ?? element.name).text,
+        isDefault: false,
+      });
+    }
+  }
+  return bindings;
+}
+
 function defaultExportNodeForFile(graph, root, target) {
   const targetPath = rel(root, target);
   const baseName = path.basename(target, path.extname(target));
@@ -1014,6 +1088,18 @@ function defaultExportNodeForFile(graph, root, target) {
     defaults.find((node) => node.name === baseName)?.id ??
     (defaults.length === 1 ? defaults[0].id : undefined)
   );
+}
+
+function exportedNodeForFileAndName(graph, root, target, exportName) {
+  if (exportName === 'default') return defaultExportNodeForFile(graph, root, target);
+  const targetPath = rel(root, target);
+  const matches = [...graph.nodes.values()].filter(
+    (node) =>
+      node.filePath === targetPath &&
+      node.name === exportName &&
+      (node.exported || node.meta?.exported || node.meta?.kind === 'vue-component-default-export'),
+  );
+  return matches.length === 1 ? matches[0].id : undefined;
 }
 
 function barrelExportTarget(graph, root, sourceFile, target, exportName, allRealFiles, virtualByVueFile) {
@@ -1978,9 +2064,17 @@ function collectImportsAndCalls(graph, root, checker, sourceFile, allRealFiles, 
           const componentId = stableId('Component', rel(root, target), componentName, 1);
           for (const localName of importLocalNames(node.importClause)) localMap.set(localName, componentId);
         } else {
-          for (const localName of importLocalIdentifiers(node.importClause)) {
-            const symbol = checker.getSymbolAtLocation(localName);
-            const aliased = symbol && (symbol.flags & ts.SymbolFlags.Alias) ? checker.getAliasedSymbol(symbol) : symbol;
+          for (const binding of importLocalIdentifierBindings(node.importClause)) {
+            const localName = binding.local;
+            const directTarget = exportedNodeForFileAndName(graph, root, target, binding.importedName);
+            if (directTarget) {
+              localMap.set(localName.text, directTarget);
+              continue;
+            }
+            const symbol = safeCheckerCall(graph, sourceFile, localName, 'import symbol resolution', () =>
+              checker.getSymbolAtLocation(localName),
+            );
+            const aliased = safeAliasedSymbol(graph, sourceFile, localName, checker, symbol, 'import symbol resolution');
             let mapped = false;
             for (const declaration of aliased?.getDeclarations() ?? []) {
               const targetId = declarationTarget(graph, declaration);
@@ -1990,7 +2084,7 @@ function collectImportsAndCalls(graph, root, checker, sourceFile, allRealFiles, 
                 break;
               }
             }
-            if (!mapped && node.importClause?.name === localName) {
+            if (!mapped && binding.isDefault) {
               const defaultTarget = defaultExportNodeForFile(graph, root, target);
               if (defaultTarget) localMap.set(localName.text, defaultTarget);
             } else if (!mapped) {
@@ -1999,7 +2093,7 @@ function collectImportsAndCalls(graph, root, checker, sourceFile, allRealFiles, 
                 root,
                 sourceFile,
                 target,
-                localName.text,
+                binding.importedName,
                 allRealFiles,
                 virtualByVueFile,
               );
@@ -2526,18 +2620,28 @@ export function indexFrontendProject(root, options = {}) {
     }
   }
 
-  const tsDiagnostics = options.diagnostics
-    ? ts.getPreEmitDiagnostics(program)
-      .filter((d) => {
-        const message = ts.flattenDiagnosticMessageText(d.messageText, '\n');
-        return !(d.file?.vueVirtual && /^Property '.+' does not exist on type /.test(message));
-      })
-      .map((d) => ({
-        file: d.file?.fileName,
-        line: d.file ? lineOf(d.file, d.start ?? 0) : 0,
-        message: ts.flattenDiagnosticMessageText(d.messageText, '\n'),
-      }))
-    : [];
+  let tsDiagnostics = [];
+  if (options.diagnostics) {
+    try {
+      tsDiagnostics = ts.getPreEmitDiagnostics(program)
+        .filter((d) => {
+          const message = ts.flattenDiagnosticMessageText(d.messageText, '\n');
+          return !(d.file?.vueVirtual && /^Property '.+' does not exist on type /.test(message));
+        })
+        .map((d) => ({
+          file: d.file?.fileName,
+          line: d.file ? lineOf(d.file, d.start ?? 0) : 0,
+          message: ts.flattenDiagnosticMessageText(d.messageText, '\n'),
+        }));
+    } catch (err) {
+      if (!isRecoverableTypeCheckerError(err)) throw err;
+      graph.checkerFailures.push({
+        file: '',
+        line: 0,
+        message: `TypeScript diagnostics failed: ${err instanceof Error ? err.message : String(err)}. Graph indexing completed without semantic diagnostics.`,
+      });
+    }
+  }
 
   return {
     root,
@@ -2546,6 +2650,7 @@ export function indexFrontendProject(root, options = {}) {
     edges: graph.edges,
     diagnostics: [
       ...vueDiagnostics,
+      ...graph.checkerFailures,
       ...tsDiagnostics,
     ],
   };
