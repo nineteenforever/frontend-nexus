@@ -20,6 +20,15 @@ function print(value) {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 }
 
+function createProgressLogger(opts) {
+  if (opts.json || opts.quiet) return () => {};
+  const started = Date.now();
+  return (message) => {
+    const elapsed = ((Date.now() - started) / 1000).toFixed(1);
+    process.stderr.write(`[vuenexus] ${message} (${elapsed}s)\n`);
+  };
+}
+
 function embeddingOptions(opts) {
   return {
     provider: opts.provider,
@@ -33,8 +42,13 @@ program.name('vuenexus').description('VueNexus graph analyzer for Vue projects')
 
 async function analyzeProject(opts) {
   const root = path.resolve(opts.root);
-  const graph = indexFrontendProject(root, { diagnostics: opts.diagnostics });
+  const progress = createProgressLogger(opts);
+  const started = Date.now();
+  progress(`Analyzing ${root}`);
+  const graph = indexFrontendProject(root, { diagnostics: opts.diagnostics, onProgress: progress });
+  progress('Writing LadybugDB graph');
   const written = await writeVueNexusLbug(graph, root, { name: opts.name });
+  progress(`Graph stored at ${written.lbugPath}`);
   const result = {
     storagePath: written.storagePath,
     lbugPath: written.lbugPath,
@@ -45,8 +59,12 @@ async function analyzeProject(opts) {
     diagnostics: graph.diagnostics.slice(0, 25),
   };
   if (opts.embeddings || opts.embedding) {
+    progress('Generating embeddings');
     result.embeddings = await embedGraphToLbug(written.lbugPath, graph.nodes.values(), embeddingOptions(opts));
+    progress(`Generated ${result.embeddings.embedded} embeddings`);
   }
+  result.durationMs = Date.now() - started;
+  progress(`Done: ${result.files} files, ${result.nodes} nodes, ${result.edges} edges`);
   print(result);
 }
 
@@ -62,6 +80,8 @@ program
   .option('--model-package <packageName>', 'npm package that contains a local embedding model')
   .option('--batch-size <n>', 'embedding batch size')
   .option('--diagnostics', 'include full TypeScript semantic diagnostics; slower on large projects')
+  .option('--json', 'suppress progress logs and print only JSON to stdout')
+  .option('--quiet', 'suppress progress logs')
   .action(analyzeProject);
 
 program
@@ -76,6 +96,8 @@ program
   .option('--model-package <packageName>', 'npm package that contains a local embedding model')
   .option('--batch-size <n>', 'embedding batch size')
   .option('--diagnostics', 'include full TypeScript semantic diagnostics; slower on large projects')
+  .option('--json', 'suppress progress logs and print only JSON to stdout')
+  .option('--quiet', 'suppress progress logs')
   .action(analyzeProject);
 
 program

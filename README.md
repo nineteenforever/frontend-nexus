@@ -109,8 +109,10 @@ VueNexus is designed for Vue frontend repositories that use:
    - registry entry: `~/.vuenexus/registry.json`
 
 10. Return analysis stats and diagnostics.
-    - diagnostics are TypeScript diagnostics; they help reveal unresolved library/shim gaps
+    - diagnostics include TypeScript diagnostics, Vue parse diagnostics, and safe fallback warnings
+    - diagnostics help reveal unresolved library/shim gaps or TypeScript checker fallback points
     - diagnostics do not automatically mean the graph failed
+    - if TypeScript semantic resolution overflows on complex project types, analyze falls back to AST/local resolution and records a diagnostic instead of aborting
 
 ## Storage Format
 
@@ -172,8 +174,14 @@ Analyze and serve:
 vuenexus analyze --root /path/to/vue-project --name my-vue-app --embedding
 vuenexus analyze --root /path/to/vue-project --embedding --provider local --model /models/bge-small-zh-v1.5
 vuenexus analyze --root /path/to/vue-project --diagnostics
+vuenexus analyze --root /path/to/vue-project --json
+vuenexus analyze --root /path/to/vue-project --quiet
 vuenexus serve --port 4747
 ```
+
+By default, `analyze` writes lightweight stage progress to stderr and the final JSON result to stdout. The progress
+messages are phase-level only, not per-file, so they are useful on large projects without materially slowing analysis.
+Use `--json` for machine-readable output with no progress logs, or `--quiet` to suppress progress logs.
 
 `analyze` skips full TypeScript semantic diagnostics by default because they can dominate runtime on large
 projects and do not affect graph generation. Use `--diagnostics` when you explicitly want the TypeScript

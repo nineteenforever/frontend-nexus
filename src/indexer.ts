@@ -2542,7 +2542,10 @@ function createProgram(root, realFiles, virtualFiles, virtualByVueFile) {
 
 export function indexFrontendProject(root, options = {}) {
   root = path.resolve(root);
+  const progress = typeof options.onProgress === 'function' ? options.onProgress : () => {};
+  progress('Scanning frontend files');
   const files = walkFiles(root);
+  progress(`Found ${files.length} frontend files`);
   const allRealFiles = new Set(files.map((file) => path.normalize(file)));
   const virtualFiles = new Map();
   const virtualByVueFile = new Map();
@@ -2551,6 +2554,7 @@ export function indexFrontendProject(root, options = {}) {
   graph.allRealFiles = allRealFiles;
   graph.virtualByVueFile = virtualByVueFile;
 
+  progress('Parsing Vue SFC files and creating graph file nodes');
   for (const file of files) {
     const content = fs.readFileSync(file, 'utf8');
     graphFileNode(graph, root, file, content);
@@ -2596,18 +2600,27 @@ export function indexFrontendProject(root, options = {}) {
       vueInfoByRealPath.set(path.normalize(file), info);
     }
   }
+  progress(`Prepared ${vueInfoByRealPath.size} Vue SFC virtual files`);
 
+  progress('Creating TypeScript program');
   const program = createProgram(root, files, virtualFiles, virtualByVueFile);
   const checker = program.getTypeChecker();
   const sourceFiles = program
     .getSourceFiles()
     .filter((sf) => !sf.isDeclarationFile && sf.realPath && sf.realPath.startsWith(root));
+  progress(`TypeScript program ready with ${sourceFiles.length} project source files`);
 
+  progress('Collecting declarations');
   for (const sourceFile of sourceFiles) collectDeclarations(graph, root, sourceFile);
+  progress(`Collected declarations: ${graph.nodes.size} nodes`);
+  progress('Collecting imports and calls');
   for (const sourceFile of sourceFiles) {
     collectImportsAndCalls(graph, root, checker, sourceFile, allRealFiles, virtualByVueFile);
   }
+  progress(`Collected imports and calls: ${graph.edges.size} edges`);
+  progress('Resolving Vue template edges');
   addVueTemplateEdges(graph, root, vueInfoByRealPath);
+  progress(`Vue template edges resolved: ${graph.edges.size} edges`);
   const vueDiagnostics = [];
   for (const [vuePath, info] of vueInfoByRealPath) {
     for (const err of info.errors ?? []) {
@@ -2622,6 +2635,7 @@ export function indexFrontendProject(root, options = {}) {
 
   let tsDiagnostics = [];
   if (options.diagnostics) {
+    progress('Collecting TypeScript diagnostics');
     try {
       tsDiagnostics = ts.getPreEmitDiagnostics(program)
         .filter((d) => {
@@ -2641,6 +2655,7 @@ export function indexFrontendProject(root, options = {}) {
         message: `TypeScript diagnostics failed: ${err instanceof Error ? err.message : String(err)}. Graph indexing completed without semantic diagnostics.`,
       });
     }
+    progress(`Collected diagnostics: ${vueDiagnostics.length + graph.checkerFailures.length + tsDiagnostics.length}`);
   }
 
   return {
