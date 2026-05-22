@@ -9,6 +9,7 @@ import { defaultLbugPath, queryVueNexusLbug, writeVueNexusLbug } from './lbug-wr
 import { localEmbeddingModelInfo } from './model-resolver.js';
 import { buildGraph, searchGraph, serveVueNexus } from './server.js';
 import { setupOpencode } from './setup.js';
+import { serveVueNexusUi } from './ui-server.js';
 
 const program = new Command();
 
@@ -156,6 +157,20 @@ program
   .option('--host <host>', 'host', '127.0.0.1')
   .action(async (opts) => {
     await serveVueNexus({ port: Number(opts.port), host: opts.host });
+  });
+
+program
+  .command('ui')
+  .description('Serve the lightweight VueNexus browser UI')
+  .option('--port <n>', 'UI port', '5173')
+  .option('--host <host>', 'UI host', '127.0.0.1')
+  .option('--server <url>', 'VueNexus API server URL', 'http://127.0.0.1:3000')
+  .action(async (opts) => {
+    await serveVueNexusUi({
+      port: Number(opts.port),
+      host: opts.host,
+      server: opts.server,
+    });
   });
 
 program

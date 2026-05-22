@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VueNexus UI</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="mark">VN</div>
+          <div>
+            <h1>VueNexus</h1>
+            <p>Frontend graph browser</p>
+          </div>
+        </div>
+        <form id="connect-form" class="connect-form">
+          <input id="server-url" name="server" autocomplete="off" spellcheck="false" />
+          <button type="submit">Connect</button>
+        </form>
+      </header>
+
+      <section class="toolbar">
+        <label>
+          Repo
+          <select id="repo-select"></select>
+        </label>
+        <label>
+          Search
+          <input id="search-input" placeholder="symbol, component, file..." autocomplete="off" />
+        </label>
+        <button id="fit-button" type="button">Fit</button>
+        <div id="status" class="status">Not connected</div>
+      </section>
+
+      <section class="workspace">
+        <aside class="left-panel">
+          <h2>Graph</h2>
+          <dl id="stats" class="stats"></dl>
+          <h2>Matches</h2>
+          <div id="matches" class="matches"></div>
+        </aside>
+
+        <section class="canvas-wrap">
+          <canvas id="graph-canvas"></canvas>
+          <div class="canvas-help">Drag to pan · wheel to zoom · click a node</div>
+        </section>
+
+        <aside class="right-panel">
+          <h2>Selection</h2>
+          <div id="details" class="details empty">Select a node to inspect relationships.</div>
+        </aside>
+      </section>
+    </main>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>

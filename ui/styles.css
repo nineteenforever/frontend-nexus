@@ -1,0 +1,301 @@
+:root {
+  color-scheme: dark;
+  --bg: #111315;
+  --panel: #181b1f;
+  --panel-2: #20242a;
+  --line: #333943;
+  --text: #eff3f8;
+  --muted: #9aa5b1;
+  --accent: #43d59e;
+  --accent-2: #6aa8ff;
+  --danger: #ff6b6b;
+  --shadow: rgba(0, 0, 0, 0.35);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  border: 1px solid #3c4654;
+  background: #252b33;
+  color: var(--text);
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--accent);
+}
+
+input,
+select {
+  min-width: 0;
+  border: 1px solid #3c4654;
+  background: #12161b;
+  color: var(--text);
+  padding: 8px 10px;
+  outline: none;
+}
+
+input:focus,
+select:focus {
+  border-color: var(--accent);
+}
+
+.app-shell {
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  height: 100vh;
+}
+
+.topbar,
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  padding: 12px 16px;
+}
+
+.topbar {
+  justify-content: space-between;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mark {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  background: #24352e;
+  border: 1px solid #39614f;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 18px;
+}
+
+h2 {
+  margin-bottom: 10px;
+  color: #d9e2ec;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.brand p,
+.status,
+.canvas-help {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.connect-form {
+  display: grid;
+  grid-template-columns: minmax(260px, 420px) auto;
+  gap: 8px;
+  width: min(560px, 48vw);
+}
+
+.toolbar label {
+  display: grid;
+  grid-template-columns: auto minmax(180px, 280px);
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.status {
+  margin-left: auto;
+}
+
+.workspace {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 280px 1fr 340px;
+}
+
+.left-panel,
+.right-panel {
+  min-height: 0;
+  overflow: auto;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  padding: 16px;
+}
+
+.right-panel {
+  border-right: 0;
+  border-left: 1px solid var(--line);
+}
+
+.canvas-wrap {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  background: #0e1012;
+}
+
+#graph-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.canvas-help {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  padding: 6px 8px;
+  background: rgba(14, 16, 18, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 12px;
+  margin: 0 0 20px;
+}
+
+.stats dt {
+  color: var(--muted);
+}
+
+.stats dd {
+  margin: 0;
+  text-align: right;
+}
+
+.matches {
+  display: grid;
+  gap: 8px;
+}
+
+.match,
+.relation {
+  padding: 9px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  cursor: pointer;
+}
+
+.match:hover,
+.relation:hover {
+  border-color: var(--accent-2);
+}
+
+.node-name {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-meta,
+.relation-meta {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.details.empty {
+  color: var(--muted);
+}
+
+.details h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.badge {
+  display: inline-block;
+  margin: 0 6px 8px 0;
+  border: 1px solid #3c4654;
+  padding: 3px 6px;
+  color: #c7d1db;
+  font-size: 12px;
+}
+
+.path {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.relations {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.error {
+  color: var(--danger);
+}
+
+@media (max-width: 1100px) {
+  .workspace {
+    grid-template-columns: 230px 1fr;
+  }
+
+  .right-panel {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .topbar,
+  .toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .connect-form,
+  .toolbar label {
+    width: 100%;
+    grid-template-columns: 1fr;
+  }
+
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .left-panel {
+    display: none;
+  }
+}

@@ -177,6 +177,7 @@ vuenexus analyze --root /path/to/vue-project --diagnostics
 vuenexus analyze --root /path/to/vue-project --json
 vuenexus analyze --root /path/to/vue-project --quiet
 vuenexus serve --port 4747
+vuenexus ui --server http://127.0.0.1:4747
 ```
 
 By default, `analyze` writes lightweight stage progress to stderr and the final JSON result to stdout. The progress
@@ -276,6 +277,38 @@ The server reads `~/.vuenexus/registry.json`, opens each repo's `.vuenexus/lbug`
 ```
 
 This lets the existing `gitnexus-web` app consume VueNexus results without changing the web UI.
+
+## Browser UI
+
+VueNexus also includes a lightweight built-in browser UI. It is separate from the analyzer code and lives under `ui/`.
+The UI is dependency-free static HTML/CSS/JS packaged with the npm tarball.
+
+Typical local workflow:
+
+```bash
+vuenexus analyze --root /path/to/vue-project
+vuenexus serve --port 3000
+vuenexus ui --port 5173 --server http://127.0.0.1:3000
+```
+
+Then open:
+
+```text
+http://127.0.0.1:5173
+```
+
+`vuenexus serve` provides the graph API. `vuenexus ui` serves only the static browser app. Keeping these commands
+separate makes it easier to run the API on one port and the UI on another, and avoids coupling graph analysis with
+browser rendering.
+
+The UI can:
+
+- connect to a local or remote VueNexus server
+- list analyzed repos from `~/.vuenexus/registry.json`
+- stream graph data from `/api/graph?stream=true`
+- render nodes and edges on a canvas
+- search symbols/files/components
+- inspect direct relationships for a selected node
 
 ## Embeddings
 
