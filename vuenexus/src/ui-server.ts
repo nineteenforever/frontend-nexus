@@ -5,7 +5,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const defaultUiDir = path.join(packageRoot, 'ui');
+const defaultUiDirCandidates = [
+  process.env.VUENEXUS_WEB_DIR,
+  path.join(packageRoot, '..', 'vuenexus-web', 'dist'),
+  path.join(packageRoot, 'web'),
+  path.join(packageRoot, 'ui', 'dist'),
+].filter(Boolean);
 
 const MIME_TYPES = new Map([
   ['.html', 'text/html; charset=utf-8'],
@@ -55,13 +60,29 @@ async function readStaticFile(uiDir, requestPath) {
   }
 }
 
+async function resolveUiDir(uiDir) {
+  const candidates = uiDir ? [uiDir] : defaultUiDirCandidates;
+  for (const candidate of candidates) {
+    const resolved = path.resolve(candidate);
+    try {
+      await fs.access(path.join(resolved, 'index.html'));
+      return resolved;
+    } catch {
+      // Keep trying the next known layout.
+    }
+  }
+  throw new Error(
+    `VueNexus Web build not found. Run "npm run build" in vuenexus-web, then pass --ui-dir ../vuenexus-web/dist or set VUENEXUS_WEB_DIR. Tried: ${candidates.map((candidate) => path.resolve(candidate)).join(', ')}`
+  );
+}
+
 export async function serveVueNexusUi({
   port = 5173,
   host = '127.0.0.1',
   server = 'http://127.0.0.1:3000',
-  uiDir = defaultUiDir,
+  uiDir,
 } = {}) {
-  await fs.access(path.join(uiDir, 'index.html'));
+  const resolvedUiDir = await resolveUiDir(uiDir);
   const httpServer = http.createServer(async (req, res) => {
     try {
       if (req.method === 'OPTIONS') {
@@ -76,7 +97,7 @@ export async function serveVueNexusUi({
       if (req.method !== 'GET' && req.method !== 'HEAD') {
         return send(res, 405, 'Method Not Allowed', { 'Content-Type': 'text/plain; charset=utf-8' });
       }
-      const file = await readStaticFile(uiDir, req.url ?? '/');
+      const file = await readStaticFile(resolvedUiDir, req.url ?? '/');
       send(res, file.status, req.method === 'HEAD' ? '' : file.body, {
         'Content-Type': contentType(file.filePath),
         'Cache-Control': file.filePath.endsWith('index.html') ? 'no-cache' : 'public, max-age=3600',

@@ -1,6 +1,64 @@
-const NODE_COLORS = {
+type NodeProperties = {
+  name?: string;
+  filePath?: string;
+  startLine?: number;
+  endLine?: number;
+  line?: number;
+  description?: string;
+};
+
+type GraphNode = {
+  id: string;
+  label: string;
+  properties: NodeProperties;
+};
+
+type GraphRelationship = {
+  sourceId: string;
+  targetId: string;
+  type: string;
+  properties?: {
+    confidence?: number;
+    reason?: string;
+    step?: number;
+  };
+};
+
+type KnowledgeGraph = {
+  nodes: GraphNode[];
+  relationships: GraphRelationship[];
+};
+
+type RepoInfo = {
+  name: string;
+  path: string;
+  stats?: {
+    files?: number;
+    nodes?: number;
+    edges?: number;
+  };
+};
+
+type Position = {
+  x: number;
+  y: number;
+};
+
+type DragStart = {
+  x: number;
+  y: number;
+  panX: number;
+  panY: number;
+};
+
+type GraphStreamEvent =
+  | { type: 'node'; data: GraphNode }
+  | { type: 'relationship'; data: GraphRelationship }
+  | { type: 'error'; error: string };
+
+const NODE_COLORS: Record<string, string> = {
   File: '#94a3b8',
-  Class: '#60a5fa',
+  Class: '#43d59e',
   Component: '#43d59e',
   Function: '#fbbf24',
   Method: '#f59e0b',
@@ -11,51 +69,67 @@ const NODE_COLORS = {
 };
 
 const HIERARCHY_EDGES = new Set(['DEFINES', 'IMPORTS', 'CONTAINS']);
+const IMPORTANT_LABELS = new Set(['Class', 'Component', 'Route', 'Function']);
 
 const state = {
   serverUrl: '',
-  repos: [],
+  repos: [] as RepoInfo[],
   repo: '',
-  graph: { nodes: [], relationships: [] },
-  positions: new Map(),
+  graph: { nodes: [], relationships: [] } as KnowledgeGraph,
+  positions: new Map<string, Position>(),
   selectedId: '',
   search: '',
+  edgeFilter: '',
   zoom: 1,
   panX: 0,
   panY: 0,
   dragging: false,
-  dragStart: null,
+  dragStart: null as DragStart | null,
+};
+
+const byId = <T extends HTMLElement>(id: string): T => {
+  const element = document.querySelector<T>(id);
+  if (!element) throw new Error(`Missing UI element: ${id}`);
+  return element;
 };
 
 const el = {
-  form: document.querySelector('#connect-form'),
-  serverUrl: document.querySelector('#server-url'),
-  repoSelect: document.querySelector('#repo-select'),
-  search: document.querySelector('#search-input'),
-  fit: document.querySelector('#fit-button'),
-  status: document.querySelector('#status'),
-  stats: document.querySelector('#stats'),
-  matches: document.querySelector('#matches'),
-  details: document.querySelector('#details'),
-  canvas: document.querySelector('#graph-canvas'),
+  form: byId<HTMLFormElement>('#connect-form'),
+  serverUrl: byId<HTMLInputElement>('#server-url'),
+  repoSelect: byId<HTMLSelectElement>('#repo-select'),
+  search: byId<HTMLInputElement>('#search-input'),
+  edgeFilter: byId<HTMLSelectElement>('#edge-filter'),
+  fit: byId<HTMLButtonElement>('#fit-button'),
+  status: byId<HTMLDivElement>('#status'),
+  stats: byId<HTMLElement>('#stats'),
+  legend: byId<HTMLDivElement>('#legend'),
+  matches: byId<HTMLDivElement>('#matches'),
+  details: byId<HTMLDivElement>('#details'),
+  canvas: byId<HTMLCanvasElement>('#graph-canvas'),
+  summaryNodes: byId<HTMLElement>('#summary-nodes'),
+  summaryEdges: byId<HTMLElement>('#summary-edges'),
+  summaryFiles: byId<HTMLElement>('#summary-files'),
+  summaryComponents: byId<HTMLElement>('#summary-components'),
 };
 
-const ctx = el.canvas.getContext('2d');
+const canvasContext = el.canvas.getContext('2d');
+if (!canvasContext) throw new Error('Canvas 2D context is unavailable');
+const ctx: CanvasRenderingContext2D = canvasContext;
 
-function params() {
+function params(): URLSearchParams {
   return new URLSearchParams(window.location.search);
 }
 
-function defaultServerUrl() {
+function defaultServerUrl(): string {
   return params().get('server') || localStorage.getItem('vuenexus.server') || 'http://127.0.0.1:3000';
 }
 
-function setStatus(message, isError = false) {
+function setStatus(message: string, isError = false): void {
   el.status.textContent = message;
   el.status.classList.toggle('error', isError);
 }
 
-function normalizeServerUrl(value) {
+function normalizeServerUrl(value: string): string {
   const trimmed = String(value || '').trim().replace(/\/+$/, '');
   if (!trimmed) return 'http://127.0.0.1:3000';
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
@@ -63,27 +137,32 @@ function normalizeServerUrl(value) {
   return `https://${trimmed}`;
 }
 
-async function fetchJson(url, options) {
+async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, options);
   if (!res.ok) {
     let message = `${res.status} ${res.statusText}`;
     try {
-      const body = await res.json();
+      const body = (await res.json()) as { error?: string };
       if (body?.error) message = body.error;
-    } catch {}
+    } catch {
+      // keep HTTP status message
+    }
     throw new Error(message);
   }
-  return res.json();
+  return res.json() as Promise<T>;
 }
 
-async function readGraphStream(res) {
+async function readGraphStream(res: Response): Promise<KnowledgeGraph> {
   const contentType = res.headers.get('content-type') || '';
   if (!res.ok) throw new Error(`Server returned ${res.status}: ${res.statusText}`);
-  if (!contentType.includes('application/x-ndjson')) return res.json();
+  if (!contentType.includes('application/x-ndjson')) return res.json() as Promise<KnowledgeGraph>;
+  if (!res.body) throw new Error('Graph stream response has no body');
+
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
-  const graph = { nodes: [], relationships: [] };
+  const graph: KnowledgeGraph = { nodes: [], relationships: [] };
   let buffer = '';
+
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -97,20 +176,20 @@ async function readGraphStream(res) {
   return graph;
 }
 
-function handleGraphLine(graph, line) {
+function handleGraphLine(graph: KnowledgeGraph, line: string): void {
   if (!line.trim()) return;
-  const event = JSON.parse(line);
+  const event = JSON.parse(line) as GraphStreamEvent;
   if (event.type === 'error') throw new Error(event.error || 'Graph stream failed');
   if (event.type === 'node') graph.nodes.push(event.data);
   if (event.type === 'relationship') graph.relationships.push(event.data);
 }
 
-async function connect() {
+async function connect(): Promise<void> {
   state.serverUrl = normalizeServerUrl(el.serverUrl.value);
   el.serverUrl.value = state.serverUrl;
   localStorage.setItem('vuenexus.server', state.serverUrl);
   setStatus('Connecting...');
-  const repos = await fetchJson(`${state.serverUrl}/api/repos`);
+  const repos = await fetchJson<RepoInfo[]>(`${state.serverUrl}/api/repos`);
   state.repos = repos;
   renderRepos();
   if (!repos.length) {
@@ -125,7 +204,7 @@ async function connect() {
   await loadGraph();
 }
 
-function renderRepos() {
+function renderRepos(): void {
   el.repoSelect.innerHTML = '';
   for (const repo of state.repos) {
     const option = document.createElement('option');
@@ -135,7 +214,7 @@ function renderRepos() {
   }
 }
 
-async function loadGraph() {
+async function loadGraph(): Promise<void> {
   if (!state.repo) return;
   localStorage.setItem('vuenexus.repo', state.repo);
   setStatus(`Loading ${state.repo}...`);
@@ -149,53 +228,74 @@ async function loadGraph() {
   setStatus(`Ready: ${state.graph.nodes.length} nodes, ${state.graph.relationships.length} edges`);
 }
 
-function nodeName(node) {
-  return node?.properties?.name || node?.name || node?.id || '';
+function nodeName(node?: GraphNode): string {
+  return node?.properties?.name || node?.id || '';
 }
 
-function nodeFile(node) {
+function nodeFile(node?: GraphNode): string {
   return node?.properties?.filePath || '';
 }
 
-function nodeLine(node) {
+function nodeLine(node?: GraphNode): number {
   return node?.properties?.startLine || node?.properties?.line || 0;
 }
 
-function nodeMatches(node, query) {
+function nodeFrontendType(node: GraphNode): string {
+  const description = node.properties?.description;
+  if (!description) return node.label;
+  try {
+    const parsed = JSON.parse(description) as { frontendType?: string };
+    return parsed.frontendType || node.label;
+  } catch {
+    return node.label;
+  }
+}
+
+function nodeMatches(node: GraphNode, query: string): boolean {
   if (!query) return true;
-  const text = [node.id, node.label, nodeName(node), nodeFile(node), node.properties?.description]
+  const text = [node.id, node.label, nodeFrontendType(node), nodeName(node), nodeFile(node), node.properties?.description]
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
   return text.includes(query.toLowerCase());
 }
 
-function computeLayout() {
+function visibleRelationships(): GraphRelationship[] {
+  if (!state.edgeFilter) return state.graph.relationships;
+  return state.graph.relationships.filter((edge) => edge.type === state.edgeFilter);
+}
+
+function computeLayout(): void {
   state.positions.clear();
   const nodes = state.graph.nodes;
-  const children = new Map();
-  const parent = new Map();
+  const children = new Map<string, string[]>();
+  const parent = new Map<string, string>();
+
   for (const edge of state.graph.relationships) {
     if (!HIERARCHY_EDGES.has(edge.type)) continue;
     if (!children.has(edge.sourceId)) children.set(edge.sourceId, []);
-    children.get(edge.sourceId).push(edge.targetId);
+    children.get(edge.sourceId)?.push(edge.targetId);
     if (!parent.has(edge.targetId)) parent.set(edge.targetId, edge.sourceId);
   }
+
   const roots = nodes.filter((node) => !parent.has(node.id) || node.label === 'File');
-  const radius = Math.max(280, Math.sqrt(nodes.length) * 42);
+  const radius = Math.max(300, Math.sqrt(nodes.length) * 46);
   const golden = Math.PI * (3 - Math.sqrt(5));
+
   roots.forEach((node, index) => {
     const r = radius * Math.sqrt((index + 1) / Math.max(roots.length, 1));
     const angle = index * golden;
     state.positions.set(node.id, { x: Math.cos(angle) * r, y: Math.sin(angle) * r });
   });
+
   for (const node of nodes) {
     if (state.positions.has(node.id)) continue;
-    const parentPos = state.positions.get(parent.get(node.id));
+    const parentId = parent.get(node.id);
+    const parentPos = parentId ? state.positions.get(parentId) : undefined;
     if (parentPos) {
-      const index = children.get(parent.get(node.id))?.indexOf(node.id) ?? 0;
+      const index = parentId ? children.get(parentId)?.indexOf(node.id) ?? 0 : 0;
       const angle = index * golden;
-      const r = 35 + (index % 7) * 12;
+      const r = 42 + (index % 8) * 12;
       state.positions.set(node.id, {
         x: parentPos.x + Math.cos(angle) * r,
         y: parentPos.y + Math.sin(angle) * r,
@@ -211,7 +311,7 @@ function computeLayout() {
   }
 }
 
-function resizeCanvas() {
+function resizeCanvas(): DOMRect {
   const rect = el.canvas.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
   const width = Math.max(1, Math.floor(rect.width * dpr));
@@ -221,9 +321,10 @@ function resizeCanvas() {
     el.canvas.height = height;
   }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return rect;
 }
 
-function screenPoint(pos) {
+function screenPoint(pos: Position): Position {
   const rect = el.canvas.getBoundingClientRect();
   return {
     x: rect.width / 2 + (pos.x + state.panX) * state.zoom,
@@ -231,7 +332,7 @@ function screenPoint(pos) {
   };
 }
 
-function worldPoint(x, y) {
+function worldPoint(x: number, y: number): Position {
   const rect = el.canvas.getBoundingClientRect();
   return {
     x: (x - rect.width / 2) / state.zoom - state.panX,
@@ -239,7 +340,7 @@ function worldPoint(x, y) {
   };
 }
 
-function fitGraph() {
+function fitGraph(): void {
   const positions = [...state.positions.values()];
   if (!positions.length) return;
   const rect = el.canvas.getBoundingClientRect();
@@ -251,32 +352,35 @@ function fitGraph() {
   const maxY = Math.max(...ys);
   const width = Math.max(1, maxX - minX);
   const height = Math.max(1, maxY - minY);
-  state.zoom = Math.min(1.6, Math.max(0.12, Math.min(rect.width / (width + 120), rect.height / (height + 120))));
+  state.zoom = Math.min(1.6, Math.max(0.1, Math.min(rect.width / (width + 160), rect.height / (height + 160))));
   state.panX = -(minX + maxX) / 2;
   state.panY = -(minY + maxY) / 2;
   draw();
 }
 
-function draw() {
-  resizeCanvas();
-  const rect = el.canvas.getBoundingClientRect();
+function draw(): void {
+  const rect = resizeCanvas();
   ctx.clearRect(0, 0, rect.width, rect.height);
+
   const query = state.search.trim();
   const matched = new Set(state.graph.nodes.filter((node) => nodeMatches(node, query)).map((node) => node.id));
+  const filteredEdges = visibleRelationships();
+
   ctx.lineWidth = 1;
-  for (const edge of state.graph.relationships) {
+  for (const edge of filteredEdges) {
     const a = state.positions.get(edge.sourceId);
     const b = state.positions.get(edge.targetId);
     if (!a || !b) continue;
     const pa = screenPoint(a);
     const pb = screenPoint(b);
     const highlight = edge.sourceId === state.selectedId || edge.targetId === state.selectedId;
-    ctx.strokeStyle = highlight ? 'rgba(67, 213, 158, 0.78)' : 'rgba(100, 116, 139, 0.22)';
+    ctx.strokeStyle = highlight ? 'rgba(67, 213, 158, 0.82)' : edgeColor(edge.type, 0.28);
     ctx.beginPath();
     ctx.moveTo(pa.x, pa.y);
     ctx.lineTo(pb.x, pb.y);
     ctx.stroke();
   }
+
   for (const node of state.graph.nodes) {
     const pos = state.positions.get(node.id);
     if (!pos) continue;
@@ -284,65 +388,105 @@ function draw() {
     const isSelected = node.id === state.selectedId;
     const isMatch = matched.has(node.id);
     const size = nodeSize(node) * Math.sqrt(state.zoom);
-    ctx.globalAlpha = query && !isMatch && !isSelected ? 0.22 : 1;
-    ctx.fillStyle = NODE_COLORS[node.label] || '#cbd5e1';
+    ctx.globalAlpha = query && !isMatch && !isSelected ? 0.2 : 1;
+    ctx.fillStyle = nodeColor(node);
     ctx.beginPath();
-    ctx.arc(p.x, p.y, isSelected ? size + 3 : size, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, isSelected ? size + 4 : size, 0, Math.PI * 2);
     ctx.fill();
     if (isSelected) {
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 2;
       ctx.stroke();
     }
-    if (state.zoom > 0.35 && (isSelected || isMatch || ['Component', 'Route', 'Class'].includes(node.label))) {
+    if (state.zoom > 0.36 && (isSelected || isMatch || IMPORTANT_LABELS.has(node.label))) {
       ctx.fillStyle = '#e5edf5';
       ctx.font = '12px system-ui, sans-serif';
-      ctx.fillText(nodeName(node).slice(0, 32), p.x + size + 4, p.y + 4);
+      ctx.fillText(nodeName(node).slice(0, 34), p.x + size + 5, p.y + 4);
     }
     ctx.globalAlpha = 1;
   }
 }
 
-function nodeSize(node) {
+function edgeColor(type: string, alpha = 1): string {
+  const color: Record<string, [number, number, number]> = {
+    CALLS: [251, 191, 36],
+    RENDERS: [67, 213, 158],
+    HANDLES: [106, 168, 255],
+    ROUTES_TO: [251, 113, 133],
+    IMPORTS: [148, 163, 184],
+    DEFINES: [100, 116, 139],
+  };
+  const [r, g, b] = color[type] || [100, 116, 139];
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function nodeColor(node: GraphNode): string {
+  return NODE_COLORS[nodeFrontendType(node)] || NODE_COLORS[node.label] || '#cbd5e1';
+}
+
+function nodeSize(node: GraphNode): number {
+  const type = nodeFrontendType(node);
   if (node.label === 'File') return 4;
-  if (node.label === 'Component' || node.label === 'Class') return 8;
+  if (type === 'Component' || node.label === 'Class') return 8;
   if (node.label === 'Route') return 7;
   if (node.label === 'UnresolvedReference') return 6;
   return 5;
 }
 
-function renderAll() {
+function renderAll(): void {
+  renderSummary();
   renderStats();
+  renderLegend();
   renderMatches();
   renderDetails();
   draw();
 }
 
-function renderStats() {
-  const counts = {};
-  for (const node of state.graph.nodes) counts[node.label] = (counts[node.label] || 0) + 1;
-  const rows = [
-    ['Nodes', state.graph.nodes.length],
-    ['Edges', state.graph.relationships.length],
-    ...Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8),
-  ];
+function renderSummary(): void {
+  el.summaryNodes.textContent = String(state.graph.nodes.length);
+  el.summaryEdges.textContent = String(state.graph.relationships.length);
+  el.summaryFiles.textContent = String(state.graph.nodes.filter((node) => node.label === 'File').length);
+  el.summaryComponents.textContent = String(state.graph.nodes.filter((node) => nodeFrontendType(node) === 'Component').length);
+}
+
+function renderStats(): void {
+  const counts: Record<string, number> = {};
+  for (const node of state.graph.nodes) {
+    const type = nodeFrontendType(node);
+    counts[type] = (counts[type] || 0) + 1;
+  }
+  const rows: [string, number][] = Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
   el.stats.innerHTML = rows.map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${value}</dd>`).join('');
 }
 
-function renderMatches() {
+function renderLegend(): void {
+  const types = [...new Set(state.graph.nodes.map(nodeFrontendType))]
+    .sort()
+    .slice(0, 12);
+  el.legend.innerHTML = types.map((type) => `
+    <div class="legend-item">
+      <span class="legend-name"><span class="dot" style="background:${escapeAttr(NODE_COLORS[type] || '#cbd5e1')}"></span>${escapeHtml(type)}</span>
+      <span>${state.graph.nodes.filter((node) => nodeFrontendType(node) === type).length}</span>
+    </div>
+  `).join('');
+}
+
+function renderMatches(): void {
   const query = state.search.trim();
   const nodes = state.graph.nodes
     .filter((node) => nodeMatches(node, query))
-    .slice(0, 60);
+    .slice(0, 70);
   el.matches.innerHTML = nodes.map((node) => `
     <div class="match" data-node-id="${escapeAttr(node.id)}">
       <div class="node-name">${escapeHtml(nodeName(node))}</div>
-      <div class="node-meta">${escapeHtml(node.label)} · ${escapeHtml(nodeFile(node))}</div>
+      <div class="node-meta">${escapeHtml(nodeFrontendType(node))} · ${escapeHtml(nodeFile(node))}</div>
     </div>
   `).join('') || '<div class="details empty">No matches</div>';
 }
 
-function renderDetails() {
+function renderDetails(): void {
   const node = state.graph.nodes.find((item) => item.id === state.selectedId);
   if (!node) {
     el.details.className = 'details empty';
@@ -352,11 +496,12 @@ function renderDetails() {
   el.details.className = 'details';
   const related = state.graph.relationships
     .filter((edge) => edge.sourceId === node.id || edge.targetId === node.id)
-    .slice(0, 80);
+    .slice(0, 90);
   const nodeById = new Map(state.graph.nodes.map((item) => [item.id, item]));
   el.details.innerHTML = `
     <h3>${escapeHtml(nodeName(node))}</h3>
     <div>
+      <span class="badge">${escapeHtml(nodeFrontendType(node))}</span>
       <span class="badge">${escapeHtml(node.label)}</span>
       ${nodeLine(node) ? `<span class="badge">line ${nodeLine(node)}</span>` : ''}
     </div>
@@ -366,10 +511,11 @@ function renderDetails() {
         const outgoing = edge.sourceId === node.id;
         const other = nodeById.get(outgoing ? edge.targetId : edge.sourceId);
         const arrow = outgoing ? '->' : '<-';
+        const reason = edge.properties?.reason ? ` · ${edge.properties.reason}` : '';
         return `
           <div class="relation" data-node-id="${escapeAttr(other?.id || '')}">
             <div class="node-name">${escapeHtml(edge.type)} ${arrow} ${escapeHtml(nodeName(other) || 'unknown')}</div>
-            <div class="relation-meta">${escapeHtml(other?.label || '')} · ${escapeHtml(other ? nodeFile(other) : '')}</div>
+            <div class="relation-meta">${escapeHtml(other ? nodeFrontendType(other) : '')} · ${escapeHtml(other ? nodeFile(other) : '')}${escapeHtml(reason)}</div>
           </div>
         `;
       }).join('') || '<div class="details empty">No direct relationships</div>'}
@@ -377,17 +523,17 @@ function renderDetails() {
   `;
 }
 
-function selectNode(id) {
+function selectNode(id?: string): void {
   if (!id) return;
   state.selectedId = id;
   renderDetails();
   draw();
 }
 
-function nearestNode(clientX, clientY) {
+function nearestNode(clientX: number, clientY: number): GraphNode | null {
   const rect = el.canvas.getBoundingClientRect();
   const target = worldPoint(clientX - rect.left, clientY - rect.top);
-  let best = null;
+  let best: GraphNode | null = null;
   let bestDist = Infinity;
   for (const node of state.graph.nodes) {
     const pos = state.positions.get(node.id);
@@ -403,36 +549,28 @@ function nearestNode(clientX, clientY) {
   return bestDist * state.zoom < 18 ? best : null;
 }
 
-function escapeHtml(value) {
+function escapeHtml(value: unknown): string {
   return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
     '&': '&amp;',
     '<': '&lt;',
     '>': '&gt;',
     '"': '&quot;',
     "'": '&#39;',
-  }[ch]));
+  })[ch] ?? ch);
 }
 
-function escapeAttr(value) {
+function escapeAttr(value: unknown): string {
   return escapeHtml(value).replace(/`/g, '&#96;');
 }
 
-el.form.addEventListener('submit', async (event) => {
+el.form.addEventListener('submit', (event) => {
   event.preventDefault();
-  try {
-    await connect();
-  } catch (err) {
-    setStatus(err instanceof Error ? err.message : String(err), true);
-  }
+  connect().catch((err: unknown) => setStatus(err instanceof Error ? err.message : String(err), true));
 });
 
-el.repoSelect.addEventListener('change', async () => {
+el.repoSelect.addEventListener('change', () => {
   state.repo = el.repoSelect.value;
-  try {
-    await loadGraph();
-  } catch (err) {
-    setStatus(err instanceof Error ? err.message : String(err), true);
-  }
+  loadGraph().catch((err: unknown) => setStatus(err instanceof Error ? err.message : String(err), true));
 });
 
 el.search.addEventListener('input', () => {
@@ -441,15 +579,20 @@ el.search.addEventListener('input', () => {
   draw();
 });
 
+el.edgeFilter.addEventListener('change', () => {
+  state.edgeFilter = el.edgeFilter.value;
+  draw();
+});
+
 el.fit.addEventListener('click', fitGraph);
 
 el.matches.addEventListener('click', (event) => {
-  const item = event.target.closest('[data-node-id]');
+  const item = (event.target as HTMLElement).closest<HTMLElement>('[data-node-id]');
   selectNode(item?.dataset.nodeId);
 });
 
 el.details.addEventListener('click', (event) => {
-  const item = event.target.closest('[data-node-id]');
+  const item = (event.target as HTMLElement).closest<HTMLElement>('[data-node-id]');
   selectNode(item?.dataset.nodeId);
 });
 
@@ -485,4 +628,4 @@ el.canvas.addEventListener('wheel', (event) => {
 window.addEventListener('resize', draw);
 
 el.serverUrl.value = defaultServerUrl();
-connect().catch((err) => setStatus(err instanceof Error ? err.message : String(err), true));
+connect().catch((err: unknown) => setStatus(err instanceof Error ? err.message : String(err), true));

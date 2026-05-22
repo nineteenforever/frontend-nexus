@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -13,7 +13,7 @@
           <div class="mark">VN</div>
           <div>
             <h1>VueNexus</h1>
-            <p>Frontend graph browser</p>
+            <p>Frontend architecture graph</p>
           </div>
         </div>
         <form id="connect-form" class="connect-form">
@@ -21,6 +21,26 @@
           <button type="submit">Connect</button>
         </form>
       </header>
+
+      <section class="summary-strip">
+        <div class="summary-card">
+          <span>Nodes</span>
+          <strong id="summary-nodes">0</strong>
+        </div>
+        <div class="summary-card">
+          <span>Edges</span>
+          <strong id="summary-edges">0</strong>
+        </div>
+        <div class="summary-card">
+          <span>Files</span>
+          <strong id="summary-files">0</strong>
+        </div>
+        <div class="summary-card">
+          <span>Components</span>
+          <strong id="summary-components">0</strong>
+        </div>
+        <div id="status" class="status">Not connected</div>
+      </section>
 
       <section class="toolbar">
         <label>
@@ -31,16 +51,35 @@
           Search
           <input id="search-input" placeholder="symbol, component, file..." autocomplete="off" />
         </label>
+        <label>
+          Edge
+          <select id="edge-filter">
+            <option value="">All</option>
+            <option value="CALLS">CALLS</option>
+            <option value="RENDERS">RENDERS</option>
+            <option value="HANDLES">HANDLES</option>
+            <option value="ROUTES_TO">ROUTES_TO</option>
+            <option value="IMPORTS">IMPORTS</option>
+            <option value="DEFINES">DEFINES</option>
+          </select>
+        </label>
         <button id="fit-button" type="button">Fit</button>
-        <div id="status" class="status">Not connected</div>
       </section>
 
       <section class="workspace">
         <aside class="left-panel">
-          <h2>Graph</h2>
-          <dl id="stats" class="stats"></dl>
-          <h2>Matches</h2>
-          <div id="matches" class="matches"></div>
+          <section>
+            <h2>Node Types</h2>
+            <dl id="stats" class="stats"></dl>
+          </section>
+          <section>
+            <h2>Legend</h2>
+            <div id="legend" class="legend"></div>
+          </section>
+          <section>
+            <h2>Matches</h2>
+            <div id="matches" class="matches"></div>
+          </section>
         </aside>
 
         <section class="canvas-wrap">

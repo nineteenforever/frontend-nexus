@@ -8,7 +8,6 @@
   },
   "files": [
     "dist",
-    "ui",
     "skills",
     "models",
     "README.md",

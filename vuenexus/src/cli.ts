@@ -165,11 +165,13 @@ program
   .option('--port <n>', 'UI port', '5173')
   .option('--host <host>', 'UI host', '127.0.0.1')
   .option('--server <url>', 'VueNexus API server URL', 'http://127.0.0.1:3000')
+  .option('--ui-dir <path>', 'built vuenexus-web dist directory')
   .action(async (opts) => {
     await serveVueNexusUi({
       port: Number(opts.port),
       host: opts.host,
       server: opts.server,
+      uiDir: opts.uiDir ? path.resolve(opts.uiDir) : undefined,
     });
   });
 
