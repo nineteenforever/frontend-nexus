@@ -1,0 +1,18 @@
+$ vuenexus analyze
+C:\Users\testUser\AppData\Local\nvm\v22.11.0\node_modules\vuenexus\node_modules\typescript\lib\typescript.js:52188
+  function isDeprecatedSymbol(symbol) {
+                             ^
+
+RangeError: Maximum call stack size exceeded
+    at isDeprecatedSymbol (C:\Users\testUser\AppData\Local\nvm\v22.11.0\node_modules\vuenexus\node_modules\typescript\lib\typescript.js:52188:30)
+    at checkIdentifierCalculateNodeCheckFlags (C:\Users\testUser\AppData\Local\nvm\v22.11.0\node_modules\vuenexus\node_modules\typescript\lib\typescript.js:76577:9)
+    at checkIdentifier (C:\Users\testUser\AppData\Local\nvm\v22.11.0\node_modules\vuenexus\node_modules\typescript\lib\typescript.js:76616:5)
+    at checkExpressionWorker (C:\Users\testUser\AppData\Local\nvm\v22.11.0\node_modules\vuenexus\node_modules\typescript\lib\typescript.js:85514:16)
+    at checkExpression (C:\Users\testUser\AppData\Local\nvm\v22.11.0\node_modules\vuenexus\node_modules\typescript\lib\typescript.js:85457:32)
+    at checkNonNullExpression (C:\Users\testUser\AppData\Local\nvm\v22.11.0\node_modules\vuenexus\node_modules\typescript\lib\typescript.js:79464:29)
+    at checkPropertyAccessExpression (C:\Users\testUser\AppData\Local\nvm\v22.11.0\node_modules\vuenexus\node_modules\typescript\lib\typescript.js:79543:162)
+    at checkExpressionWorker (C:\Users\testUser\AppData\Local\nvm\v22.11.0\node_modules\vuenexus\node_modules\typescript\lib\typescript.js:85548:16)
+    at checkExpression (C:\Users\testUser\AppData\Local\nvm\v22.11.0\node_modules\vuenexus\node_modules\typescript\lib\typescript.js:85457:32)
+    at maybeCheckExpression (C:\Users\testUser\AppData\Local\nvm\v22.11.0\node_modules\vuenexus\node_modules\typescript\lib\typescript.js:84397:28)
+
+Node.js v22.11.0
