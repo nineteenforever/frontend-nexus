@@ -161,7 +161,7 @@ program
 
 program
   .command('ui')
-  .description('Serve the lightweight VueNexus browser UI')
+  .description('Serve a built vuenexus-web static UI')
   .option('--port <n>', 'UI port', '5173')
   .option('--host <host>', 'UI host', '127.0.0.1')
   .option('--server <url>', 'VueNexus API server URL', 'http://127.0.0.1:3000')

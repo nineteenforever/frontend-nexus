@@ -3,7 +3,7 @@
 This repository is split into two maintainable projects:
 
 - `vuenexus`: CLI, analyzer, LadybugDB storage, MCP server, setup command, and API server. Run `npm pack` from this directory when you want to create the installable `vuenexus` package.
-- `vuenexus-web`: TypeScript browser UI for graph exploration. It consumes the GitNexus-compatible APIs exposed by `vuenexus serve`.
+- `vuenexus-web`: independent Vite + React + TypeScript browser UI, equivalent in relationship to `gitnexus-web` and `gitnexus`. It consumes the GitNexus-compatible APIs exposed by `vuenexus serve`.
 
 Typical local workflow:
 
@@ -17,12 +17,14 @@ npm pack
 ```bash
 cd ../vuenexus-web
 npm install
-npm run build
+npm run dev
 ```
 
-Then, inside an analyzed project:
+Then, inside an analyzed project or a project where `vuenexus` is globally installed:
 
 ```bash
+vuenexus analyze --root /path/to/vue-project
 vuenexus serve --port 3000
-vuenexus ui --server http://127.0.0.1:3000 --ui-dir /path/to/frontend-nexus/vuenexus-web/dist
 ```
+
+Open the `vuenexus-web` dev URL, usually `http://127.0.0.1:5173`, and enter `http://127.0.0.1:3000` as the VueNexus server.

@@ -280,16 +280,16 @@ This lets the existing `gitnexus-web` app consume VueNexus results without chang
 
 ## Browser UI
 
-The browser UI now lives in the sibling `vuenexus-web` project, not inside the npm CLI package. This keeps
-`vuenexus` focused on analyze/storage/MCP/API work, while `vuenexus-web` can evolve toward a GitNexus Web-like
-graph workspace without bloating the CLI tarball.
+The browser UI lives in the sibling `vuenexus-web` project, not inside the npm CLI package. This keeps
+`vuenexus` focused on analyze/storage/MCP/API work, while `vuenexus-web` works like `gitnexus-web`: a standalone
+frontend project that connects to a running `vuenexus serve` API.
 
-Build the UI once:
+Run the UI during development:
 
 ```bash
 cd /path/to/frontend-nexus/vuenexus-web
 npm install
-npm run build
+npm run dev
 ```
 
 Typical local workflow:
@@ -297,7 +297,6 @@ Typical local workflow:
 ```bash
 vuenexus analyze --root /path/to/vue-project
 vuenexus serve --port 3000
-vuenexus ui --port 5173 --server http://127.0.0.1:3000 --ui-dir /path/to/frontend-nexus/vuenexus-web/dist
 ```
 
 Then open:
@@ -306,9 +305,15 @@ Then open:
 http://127.0.0.1:5173
 ```
 
-`vuenexus serve` provides the graph API. `vuenexus ui` serves only the built `vuenexus-web` static app. If
-`vuenexus-web` sits next to `vuenexus` in this monorepo, `vuenexus ui` can find `../vuenexus-web/dist`
-automatically after the UI has been built. You can also set `VUENEXUS_WEB_DIR` or pass `--ui-dir`.
+Enter `http://127.0.0.1:3000` in the server input. `vuenexus serve` provides the graph API. `vuenexus-web`
+provides the browser experience.
+
+For a production static build, run `npm run build` in `vuenexus-web`. The legacy helper command can serve that
+build when useful:
+
+```bash
+vuenexus ui --port 5173 --server http://127.0.0.1:3000 --ui-dir /path/to/frontend-nexus/vuenexus-web/dist
+```
 
 The UI can:
 
