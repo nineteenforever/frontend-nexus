@@ -316,7 +316,7 @@ program
   .description('Install VueNexus MCP and skill configuration for an agent')
   .option('--agent <agent>', 'agent to configure', 'opencode')
   .option('--scope <scope>', 'global or project opencode config', 'global')
-  .option('--db <path>', 'LadybugDB path used by the MCP server', '.vuenexus/lbug')
+  .option('--db <path>', 'explicit LadybugDB path for the MCP server; defaults to the agent workspace .vuenexus/lbug')
   .option('--command <command>', 'command used by opencode to launch VueNexus', 'vuenexus')
   .option('--config <path>', 'explicit opencode config path')
   .option('--skill-dir <path>', 'explicit opencode skill directory')

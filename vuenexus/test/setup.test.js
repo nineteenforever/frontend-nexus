@@ -21,7 +21,6 @@ test('sets up opencode MCP and skill files without overwriting unrelated config'
 
   const result = await setupOpencode({
     home,
-    db: '.vuenexus/lbug',
     command: 'vuenexus',
   });
 
@@ -30,10 +29,23 @@ test('sets up opencode MCP and skill files without overwriting unrelated config'
   assert.deepEqual(config.mcp.existing.command, ['echo', 'ok']);
   assert.deepEqual(config.mcp.vuenexus, {
     type: 'local',
-    command: ['vuenexus', 'mcp', '--db', '.vuenexus/lbug'],
+    command: ['vuenexus', 'mcp'],
     enabled: true,
   });
   assert.ok(fs.existsSync(path.join(home, '.config', 'opencode', 'skill', 'vuenexus', 'SKILL.md')));
   assert.equal(result.configPath, configPath);
 });
 
+test('allows setup to pin an explicit MCP database path', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'vuenexus-opencode-db-'));
+
+  await setupOpencode({
+    home,
+    db: '/repo/.vuenexus/lbug',
+    command: 'vuenexus',
+  });
+
+  const configPath = path.join(home, '.config', 'opencode', 'opencode.json');
+  const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  assert.deepEqual(config.mcp.vuenexus.command, ['vuenexus', 'mcp', '--db', '/repo/.vuenexus/lbug']);
+});

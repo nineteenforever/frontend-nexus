@@ -233,12 +233,16 @@ The MCP entry added to opencode is:
   "mcp": {
     "vuenexus": {
       "type": "local",
-      "command": ["vuenexus", "mcp", "--db", ".vuenexus/lbug"],
+      "command": ["vuenexus", "mcp"],
       "enabled": true
     }
   }
 }
 ```
+
+`vuenexus mcp` defaults to the current workspace's `.vuenexus/lbug`, so the MCP config normally does not need
+`--db`. Use `vuenexus setup --db /absolute/path/to/.vuenexus/lbug` only when your agent starts MCP servers from a
+different working directory.
 
 For a project-local opencode config:
 

@@ -46,8 +46,7 @@ function packagedSkillPath() {
 
 function mcpCommand(opts = {}) {
   const command = opts.command ?? 'vuenexus';
-  const db = opts.db ?? '.vuenexus/lbug';
-  return [command, 'mcp', '--db', db];
+  return opts.db ? [command, 'mcp', '--db', opts.db] : [command, 'mcp'];
 }
 
 export function opencodeSetupPaths(opts = {}) {
@@ -85,4 +84,3 @@ export async function setupOpencode(opts = {}) {
     mcp: config.mcp.vuenexus,
   };
 }
-
