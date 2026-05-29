@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { createEmbeddingsForNodes } from '../dist/embedding.js';
 import { indexFrontendProject } from '../dist/indexer.js';
@@ -35,6 +37,20 @@ test('indexes the frontend fixture without TypeScript diagnostics', () => {
   const { graph } = graphRows();
   assert.equal(graph.diagnostics.length, 0);
   assert.equal(graph.files, 10);
+});
+
+test('reuses unchanged files from the incremental analysis cache', () => {
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vuenexus-incremental-'));
+  fs.cpSync(fixtureRoot, tmpRoot, { recursive: true });
+  fs.rmSync(path.join(tmpRoot, '.vuenexus'), { recursive: true, force: true });
+
+  const first = indexFrontendProject(tmpRoot);
+  const second = indexFrontendProject(tmpRoot);
+
+  assert.equal(first.cache.hitFiles, 0);
+  assert.ok(second.cache.hitFiles > 0, 'second analyze should reuse cached file slices');
+  assert.equal(second.nodes.size, first.nodes.size);
+  assert.equal(second.edges.size, first.edges.size);
 });
 
 test('extracts all expected Vue frontend node types', () => {

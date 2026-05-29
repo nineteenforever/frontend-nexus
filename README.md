@@ -17,7 +17,7 @@ npm install
 npm run build
 npm pack
 npm uninstall -g vuenexus
-npm install -g ./vuenexus-0.1.4.tgz
+npm install -g ./vuenexus-0.1.5.tgz
 ```
 
 Configure opencode MCP and the VueNexus skill:
@@ -60,6 +60,11 @@ expensive TypeScript checker calls for every call expression and keeps the run f
 dependency/type graphs, while still resolving Vue SFC, import/export, local calls, route, component, Pinia, Vuex,
 and mixin relationships through AST-first analysis. Use `vuenexus analyze --checker full` only when you explicitly
 want deeper TypeScript call-target resolution and can accept slower analysis.
+
+`vuenexus analyze` also uses an incremental analysis cache by default. It stores per-file graph slices under
+`.vuenexus/cache/analysis-cache.json`, reuses unchanged files on the next run, and re-analyzes changed files plus
+their import dependents. Use `vuenexus analyze -f` or `vuenexus analyze --force` when you want a clean full
+re-analysis and cache refresh.
 
 Analyze results are written to:
 

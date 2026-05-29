@@ -60,6 +60,7 @@ async function analyzeProject(opts) {
   const graph = indexFrontendProject(root, {
     diagnostics: opts.diagnostics,
     checkerMode: opts.checker,
+    incremental: !opts.force && opts.incremental !== false,
     onProgress: progress,
   });
   progress('Writing LadybugDB graph');
@@ -72,6 +73,7 @@ async function analyzeProject(opts) {
     files: graph.files,
     nodes: graph.nodes.size,
     edges: graph.edges.size,
+    cache: graph.cache,
     diagnostics: graph.diagnostics.slice(0, 25),
   };
   if (opts.embeddings || opts.embedding) {
@@ -96,6 +98,8 @@ program
   .option('--model-package <packageName>', 'npm package that contains a local embedding model')
   .option('--batch-size <n>', 'embedding batch size')
   .option('--checker <mode>', 'TypeScript checker mode for call resolution: fast, full, or off', 'fast')
+  .option('-f, --force', 'force a full re-analysis and refresh the incremental cache')
+  .option('--no-incremental', 'disable reading the incremental analysis cache')
   .option('--diagnostics', 'include full TypeScript semantic diagnostics; slower on large projects')
   .option('--json', 'suppress progress logs and print only JSON to stdout')
   .option('--quiet', 'suppress progress logs')
@@ -113,6 +117,8 @@ program
   .option('--model-package <packageName>', 'npm package that contains a local embedding model')
   .option('--batch-size <n>', 'embedding batch size')
   .option('--checker <mode>', 'TypeScript checker mode for call resolution: fast, full, or off', 'fast')
+  .option('-f, --force', 'force a full re-analysis and refresh the incremental cache')
+  .option('--no-incremental', 'disable reading the incremental analysis cache')
   .option('--diagnostics', 'include full TypeScript semantic diagnostics; slower on large projects')
   .option('--json', 'suppress progress logs and print only JSON to stdout')
   .option('--quiet', 'suppress progress logs')

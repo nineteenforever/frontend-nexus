@@ -1,6 +1,7 @@
 // @ts-nocheck
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import ts from 'typescript';
 import { parse as parseSfc } from '@vue/compiler-sfc';
 import { baseParse, NodeTypes } from '@vue/compiler-dom';
@@ -17,6 +18,7 @@ const IGNORE_DIRS = new Set([
   'coverage',
   '.vuenexus',
 ]);
+const ANALYSIS_CACHE_VERSION = 1;
 
 function slash(filePath) {
   return filePath.split(path.sep).join('/');
@@ -29,6 +31,27 @@ function rel(root, filePath) {
 function fileKey(filePath) {
   const normalized = slash(path.normalize(filePath));
   return /^[A-Za-z]:/.test(normalized) ? normalized.toLowerCase() : normalized;
+}
+
+function analysisCachePath(root) {
+  return path.join(root, '.vuenexus', 'cache', 'analysis-cache.json');
+}
+
+function contentHash(content) {
+  return crypto.createHash('sha1').update(content).digest('hex');
+}
+
+function readJsonFile(filePath) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return undefined;
+  }
+}
+
+function writeJsonFile(filePath, value) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
 function stableId(...parts) {
@@ -2576,13 +2599,123 @@ function progressTicker(progress, root, label, total, intervalMs = 5000) {
   };
 }
 
+function sourceFileRelPath(root, sourceFile) {
+  return rel(root, sourceFile.realPath ?? sourceFile.fileName);
+}
+
+function sourceFileSymbolKey(sourceFile) {
+  return fileKey(sourceFile.fileName);
+}
+
+function collectSourceFileImports(root, sourceFile, allRealFiles, virtualByVueFile) {
+  const imports = new Set();
+  visit(sourceFile, (node) => {
+    if (!ts.isImportDeclaration(node) || !ts.isStringLiteral(node.moduleSpecifier)) return;
+    const target = resolveImportTarget(root, sourceFile, node.moduleSpecifier.text, allRealFiles, virtualByVueFile);
+    if (target) imports.add(rel(root, target));
+  });
+  return [...imports].sort();
+}
+
+function cacheCompatible(cache, checkerMode) {
+  return cache?.version === ANALYSIS_CACHE_VERSION && cache.checkerMode === checkerMode && cache.files;
+}
+
+function changedCacheFiles(root, files, fileContents, cache) {
+  const current = new Set(files.map((file) => rel(root, file)));
+  const changed = new Set();
+  for (const file of files) {
+    const filePath = rel(root, file);
+    const entry = cache?.files?.[filePath];
+    if (!entry || entry.hash !== contentHash(fileContents.get(file))) changed.add(filePath);
+  }
+  for (const filePath of Object.keys(cache?.files ?? {})) {
+    if (!current.has(filePath)) changed.add(filePath);
+  }
+  return changed;
+}
+
+function impactedCacheFiles(cache, changed, currentFilePaths = []) {
+  const reverseImports = new Map();
+  for (const [filePath, entry] of Object.entries(cache?.files ?? {})) {
+    for (const imported of entry.imports ?? []) {
+      if (!reverseImports.has(imported)) reverseImports.set(imported, new Set());
+      reverseImports.get(imported).add(filePath);
+    }
+  }
+  const impacted = new Set(changed);
+  const queue = [...changed];
+  while (queue.length) {
+    const filePath = queue.shift();
+    for (const importer of reverseImports.get(filePath) ?? []) {
+      if (impacted.has(importer)) continue;
+      impacted.add(importer);
+      queue.push(importer);
+    }
+  }
+  if ([...changed].some((filePath) => filePath.endsWith('.vue'))) {
+    for (const filePath of currentFilePaths) {
+      if (filePath.endsWith('.vue')) impacted.add(filePath);
+    }
+  }
+  return impacted;
+}
+
+function restoreCachedFileSlice(graph, entry) {
+  for (const node of entry.nodes ?? []) graph.addNode(node);
+  for (const edge of entry.edges ?? []) graph.addEdge(edge);
+  if (entry.localSymbolsKey && Array.isArray(entry.localSymbols)) {
+    graph.localSymbols.set(entry.localSymbolsKey, new Map(entry.localSymbols));
+  }
+}
+
+function writeAnalysisCache(root, graph, files, fileContents, sourceFiles, importsByFile, checkerMode) {
+  const entries = {};
+  const sourceKeyByRel = new Map(sourceFiles.map((sourceFile) => [sourceFileRelPath(root, sourceFile), sourceFileSymbolKey(sourceFile)]));
+  const externalNodes = [...graph.nodes.values()].filter((node) => !node.filePath);
+  for (const file of files) {
+    const filePath = rel(root, file);
+    const sourceKey = sourceKeyByRel.get(filePath);
+    const nodeIds = new Set();
+    const nodes = [
+      ...externalNodes,
+      ...[...graph.nodes.values()].filter((node) => node.filePath === filePath),
+    ];
+    for (const node of nodes) nodeIds.add(node.id);
+    const edges = [...graph.edges.values()].filter(
+      (edge) =>
+        edge.sourceFilePath === filePath ||
+        edge.targetFilePath === filePath ||
+        nodeIds.has(edge.source) ||
+        nodeIds.has(edge.target),
+    );
+    entries[filePath] = {
+      hash: contentHash(fileContents.get(file) ?? ''),
+      imports: importsByFile.get(filePath) ?? [],
+      localSymbolsKey: sourceKey,
+      localSymbols: sourceKey ? [...(graph.localSymbols.get(sourceKey) ?? new Map()).entries()] : [],
+      nodes,
+      edges,
+    };
+  }
+  writeJsonFile(analysisCachePath(root), {
+    version: ANALYSIS_CACHE_VERSION,
+    checkerMode,
+    generatedAt: new Date().toISOString(),
+    files: entries,
+  });
+}
+
 export function indexFrontendProject(root, options = {}) {
   root = path.resolve(root);
   const progress = typeof options.onProgress === 'function' ? options.onProgress : () => {};
   const checkerMode = ['off', 'fast', 'full'].includes(options.checkerMode) ? options.checkerMode : 'fast';
+  const canUseIncrementalCache = options.incremental !== false && !options.diagnostics && checkerMode !== 'full';
+  const canWriteIncrementalCache = !options.diagnostics && checkerMode !== 'full';
   progress('Scanning frontend files');
   const files = walkFiles(root);
   progress(`Found ${files.length} frontend files`);
+  const fileContents = new Map();
   const allRealFiles = new Set(files.map((file) => path.normalize(file)));
   const virtualFiles = new Map();
   const virtualByVueFile = new Map();
@@ -2594,6 +2727,7 @@ export function indexFrontendProject(root, options = {}) {
   progress('Parsing Vue SFC files and creating graph file nodes');
   for (const file of files) {
     const content = fs.readFileSync(file, 'utf8');
+    fileContents.set(file, content);
     graphFileNode(graph, root, file, content);
 
     if (path.extname(file) === '.vue') {
@@ -2648,10 +2782,32 @@ export function indexFrontendProject(root, options = {}) {
     .filter((sf) => !sf.isDeclarationFile && sf.realPath && sf.realPath.startsWith(root));
   progress(`TypeScript program ready with ${sourceFiles.length} project source files`);
 
+  const cachePath = analysisCachePath(root);
+  const cache = canUseIncrementalCache ? readJsonFile(cachePath) : undefined;
+  const usableCache = cacheCompatible(cache, checkerMode) ? cache : undefined;
+  const changedFiles = usableCache ? changedCacheFiles(root, files, fileContents, usableCache) : new Set(files.map((file) => rel(root, file)));
+  const currentFilePaths = files.map((file) => rel(root, file));
+  const impactedFiles = usableCache ? impactedCacheFiles(usableCache, changedFiles, currentFilePaths) : changedFiles;
+  const sourceFileByRel = new Map(sourceFiles.map((sourceFile) => [sourceFileRelPath(root, sourceFile), sourceFile]));
+  let cacheHitFiles = 0;
+  if (usableCache) {
+    for (const [filePath, entry] of Object.entries(usableCache.files ?? {})) {
+      if (!sourceFileByRel.has(filePath) || impactedFiles.has(filePath)) continue;
+      restoreCachedFileSlice(graph, entry);
+      cacheHitFiles++;
+    }
+    progress(`Incremental cache: ${cacheHitFiles} reused, ${sourceFiles.length - cacheHitFiles} analyzed, ${impactedFiles.size} impacted`);
+  } else if (canUseIncrementalCache) {
+    progress('Incremental cache: cold or incompatible; analyzing all files');
+  } else {
+    progress('Incremental cache: disabled for this run');
+  }
+
   progress('Collecting declarations');
   const declarationProgress = progressTicker(progress, root, 'Collecting declarations', sourceFiles.length);
   for (const [index, sourceFile] of sourceFiles.entries()) {
     declarationProgress(index, sourceFile);
+    if (usableCache && !impactedFiles.has(sourceFileRelPath(root, sourceFile))) continue;
     collectDeclarations(graph, root, sourceFile);
   }
   progress(`Collected declarations: ${graph.nodes.size} nodes`);
@@ -2659,6 +2815,7 @@ export function indexFrontendProject(root, options = {}) {
   const callProgress = progressTicker(progress, root, 'Collecting imports and calls', sourceFiles.length);
   for (const [index, sourceFile] of sourceFiles.entries()) {
     callProgress(index, sourceFile);
+    if (usableCache && !impactedFiles.has(sourceFileRelPath(root, sourceFile))) continue;
     collectImportsAndCalls(graph, root, checker, sourceFile, allRealFiles, virtualByVueFile);
   }
   progress(`Collected imports and calls: ${graph.edges.size} edges`);
@@ -2702,11 +2859,27 @@ export function indexFrontendProject(root, options = {}) {
     progress(`Collected diagnostics: ${vueDiagnostics.length + graph.checkerFailures.length + tsDiagnostics.length}`);
   }
 
+  const importsByFile = new Map();
+  for (const sourceFile of sourceFiles) {
+    importsByFile.set(sourceFileRelPath(root, sourceFile), collectSourceFileImports(root, sourceFile, allRealFiles, virtualByVueFile));
+  }
+  if (canWriteIncrementalCache) {
+    progress('Writing incremental analysis cache');
+    writeAnalysisCache(root, graph, files, fileContents, sourceFiles, importsByFile, checkerMode);
+  }
+
   return {
     root,
     files: files.length,
     nodes: graph.nodes,
     edges: graph.edges,
+    cache: {
+      enabled: canUseIncrementalCache,
+      path: cachePath,
+      hitFiles: cacheHitFiles,
+      analyzedFiles: usableCache ? sourceFiles.length - cacheHitFiles : sourceFiles.length,
+      impactedFiles: impactedFiles.size,
+    },
     diagnostics: [
       ...vueDiagnostics,
       ...graph.checkerFailures,

@@ -32,7 +32,7 @@ npm run check
 npm test
 npm pack
 npm uninstall -g vuenexus
-npm install -g ./vuenexus-0.1.4.tgz
+npm install -g ./vuenexus-0.1.5.tgz
 ```
 
 VueNexus is implemented in TypeScript and publishes compiled JavaScript from `dist`.
@@ -175,6 +175,8 @@ Analyze and serve:
 ```bash
 vuenexus analyze --root /path/to/vue-project --name my-vue-app --embedding
 vuenexus analyze --root /path/to/vue-project --embedding --provider local --model /models/bge-small-zh-v1.5
+vuenexus analyze --root /path/to/vue-project
+vuenexus analyze --root /path/to/vue-project -f
 vuenexus analyze --root /path/to/vue-project --checker full
 vuenexus analyze --root /path/to/vue-project --diagnostics
 vuenexus analyze --root /path/to/vue-project --json
@@ -192,6 +194,11 @@ expression, so large Vue projects do not get stuck in deep dependency/type graph
 import/export, local calls, Vue template edges, routes, Pinia/Vuex relations, mixins, and common same-file calls.
 Use `--checker full` only when you need maximum TypeScript call-target resolution and can accept slower analysis.
 Use `--checker off` for the most conservative AST/local-only run.
+
+`analyze` uses incremental analysis by default. The cache lives at `.vuenexus/cache/analysis-cache.json` and stores
+per-file graph slices, import dependencies, local symbols, and content hashes. On the next run, VueNexus reuses
+unchanged file slices and re-analyzes changed files plus files that import them. Use `-f` or `--force` to do a full
+clean re-analysis and refresh the cache. Use `--no-incremental` to ignore the cache for a single run.
 
 `analyze` skips full TypeScript semantic diagnostics by default because they can dominate runtime on large
 projects and do not affect graph generation. Use `--diagnostics` when you explicitly want the TypeScript
@@ -491,7 +498,7 @@ vben-use-form.vue @keydown.enter
 ## Current Limits
 
 - This is Vue/frontend-only by design.
-- Full monorepo analysis can be slow; prefer package-level roots until incremental indexing is added.
+- Full monorepo analysis can still be slow on cold cache; prefer package-level roots for the first run, then use the default incremental cache for repeated analysis.
 - Template expression extraction links identifier references, but it does not execute Vue runtime behavior.
 - Third-party component internals are only linked when their source exists inside the analyzed root.
 - Embedding storage is available, but graph precision remains parser/checker based and independent from vector search.
