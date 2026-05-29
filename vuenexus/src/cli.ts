@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // @ts-nocheck
+import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import { indexFrontendProject } from './indexer.js';
 import { embedGraphToLbug, semanticSearchLbug } from './embedding.js';
@@ -12,6 +14,15 @@ import { setupOpencode } from './setup.js';
 import { serveVueNexusUi } from './ui-server.js';
 
 const program = new Command();
+const packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+function packageVersion() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf8')).version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
 
 function defaultLbug(root = process.cwd()) {
   return defaultLbugPath(root);
@@ -39,7 +50,7 @@ function embeddingOptions(opts) {
   };
 }
 
-program.name('vuenexus').description('VueNexus graph analyzer for Vue projects');
+program.name('vuenexus').description('VueNexus graph analyzer for Vue projects').version(packageVersion());
 
 async function analyzeProject(opts) {
   const root = path.resolve(opts.root);
