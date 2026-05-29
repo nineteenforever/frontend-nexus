@@ -1,16 +1,12 @@
 {
-  "mcpServers": {
+  "mcp": {
     "vuenexus": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "--package",
-        "vuenexus@latest",
+      "type": "local",
+      "command": [
         "vuenexus",
-        "mcp",
-        "--db",
-        ".vuenexus/lbug"
-      ]
+        "mcp"
+      ],
+      "enabled": true
     }
   }
 }

@@ -78,6 +78,9 @@ Recommended MCP config:
 }
 ```
 
+The packaged `mcp.json` beside this skill is the same opencode-style template. It is mainly a copyable reference;
+`vuenexus setup` writes the real config automatically.
+
 `vuenexus mcp` reads the current workspace's `.vuenexus/lbug` by default. Add `--db /absolute/path/to/.vuenexus/lbug` only when the agent starts MCP from outside the analyzed project.
 
 Prefer MCP tools in this order:
