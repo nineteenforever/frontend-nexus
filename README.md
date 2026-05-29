@@ -81,6 +81,63 @@ opencode .
 
 opencode starts the MCP command `vuenexus mcp`. Because it starts from the Vue project directory, `vuenexus mcp` automatically reads `./.vuenexus/lbug`. You normally do not need `--db`.
 
+## Analyze With Embeddings
+
+Embeddings are optional. They do not affect graph precision: nodes and edges are generated first from Vue/TypeScript parsing, then vectors are written into the same `.vuenexus/lbug` store.
+
+For internal networks, use a local model directory or an internal model package. Do not rely on network model downloads.
+
+Use an explicit local model directory:
+
+```bash
+cd /path/to/vue-project
+vuenexus analyze --embedding --provider local --model /absolute/path/to/local/embedding-model
+```
+
+The local model should be a Transformers.js feature-extraction model, usually shaped like:
+
+```text
+/absolute/path/to/local/embedding-model/config.json
+/absolute/path/to/local/embedding-model/tokenizer.json
+/absolute/path/to/local/embedding-model/onnx/model_quantized.onnx
+```
+
+If the model is bundled inside the installed `vuenexus` package at `models/embedding`, this is enough:
+
+```bash
+vuenexus analyze --embedding
+vuenexus model-info
+```
+
+If the model is published as a separate internal npm package:
+
+```bash
+npm install -g vuenexus @your-scope/vuenexus-embedding-model --registry http://your-internal-npm/
+vuenexus analyze --embedding --model-package @your-scope/vuenexus-embedding-model
+```
+
+You can also vectorize an existing graph after a normal analyze:
+
+```bash
+vuenexus analyze
+vuenexus embed --provider local --model /absolute/path/to/local/embedding-model
+```
+
+Then test semantic search:
+
+```bash
+vuenexus semantic --query "用户登录表单" --limit 10
+```
+
+For smoke tests only, use deterministic hash vectors:
+
+```bash
+vuenexus analyze --embedding --provider hash
+vuenexus semantic --query "anything" --provider hash
+```
+
+`hash` is not semantic search quality; it only proves the embedding storage/query path works.
+
 ## Browser Graph UI
 
 Start the API server:
