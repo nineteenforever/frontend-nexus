@@ -32,7 +32,7 @@ npm run check
 npm test
 npm pack
 npm uninstall -g vuenexus
-npm install -g ./vuenexus-0.1.5.tgz
+npm install -g ./vuenexus-0.1.6.tgz
 ```
 
 VueNexus is implemented in TypeScript and publishes compiled JavaScript from `dist`.
@@ -199,6 +199,10 @@ Use `--checker off` for the most conservative AST/local-only run.
 per-file graph slices, import dependencies, local symbols, and content hashes. On the next run, VueNexus reuses
 unchanged file slices and re-analyzes changed files plus files that import them. Use `-f` or `--force` to do a full
 clean re-analysis and refresh the cache. Use `--no-incremental` to ignore the cache for a single run.
+
+`analyze` skips generated or minified JavaScript by default. The filter covers obvious vendor/bundle filenames such
+as `.min.js`, `jquery*.js`, `cssWorkerMain.js`, runtime/vendor/chunk bundles, and very large single-line JS files.
+Use `--include-generated` when you intentionally want those files included in the graph.
 
 `analyze` skips full TypeScript semantic diagnostics by default because they can dominate runtime on large
 projects and do not affect graph generation. Use `--diagnostics` when you explicitly want the TypeScript
@@ -498,7 +502,7 @@ vben-use-form.vue @keydown.enter
 ## Current Limits
 
 - This is Vue/frontend-only by design.
-- Full monorepo analysis can still be slow on cold cache; prefer package-level roots for the first run, then use the default incremental cache for repeated analysis.
+- Full monorepo analysis can still be slow on cold cache; prefer package-level roots for the first run, keep generated JS filtering enabled, then use the default incremental cache for repeated analysis.
 - Template expression extraction links identifier references, but it does not execute Vue runtime behavior.
 - Third-party component internals are only linked when their source exists inside the analyzed root.
 - Embedding storage is available, but graph precision remains parser/checker based and independent from vector search.

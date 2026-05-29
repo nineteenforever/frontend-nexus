@@ -17,6 +17,13 @@ function graphRows() {
   };
 }
 
+function copyFixtureWithoutStorage(targetRoot) {
+  fs.cpSync(fixtureRoot, targetRoot, {
+    recursive: true,
+    filter: (source) => !source.split(path.sep).includes('.vuenexus'),
+  });
+}
+
 function findNode(nodes, type, name, filePath) {
   return nodes.find(
     (node) => node.type === type && node.name === name && (!filePath || node.filePath === filePath),
@@ -41,7 +48,7 @@ test('indexes the frontend fixture without TypeScript diagnostics', () => {
 
 test('reuses unchanged files from the incremental analysis cache', () => {
   const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vuenexus-incremental-'));
-  fs.cpSync(fixtureRoot, tmpRoot, { recursive: true });
+  copyFixtureWithoutStorage(tmpRoot);
   fs.rmSync(path.join(tmpRoot, '.vuenexus'), { recursive: true, force: true });
 
   const first = indexFrontendProject(tmpRoot);
@@ -51,6 +58,24 @@ test('reuses unchanged files from the incremental analysis cache', () => {
   assert.ok(second.cache.hitFiles > 0, 'second analyze should reuse cached file slices');
   assert.equal(second.nodes.size, first.nodes.size);
   assert.equal(second.edges.size, first.edges.size);
+});
+
+test('skips generated or minified JavaScript files by default', () => {
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vuenexus-generated-'));
+  copyFixtureWithoutStorage(tmpRoot);
+  fs.rmSync(path.join(tmpRoot, '.vuenexus'), { recursive: true, force: true });
+  const generatedDir = path.join(tmpRoot, 'src', 'vendor');
+  fs.mkdirSync(generatedDir, { recursive: true });
+  fs.writeFileSync(path.join(generatedDir, 'jquery.min.js'), 'function ignored(){return true}\n');
+  fs.writeFileSync(path.join(generatedDir, 'cssWorkerMain.js'), 'function ignoredWorker(){return true}\n');
+
+  const graph = indexFrontendProject(tmpRoot);
+  const included = [...graph.nodes.values()].filter((node) => node.type === 'File').map((node) => node.filePath);
+
+  assert.equal(graph.files, 10);
+  assert.equal(graph.skippedFiles.length, 2);
+  assert.ok(!included.includes('src/vendor/jquery.min.js'));
+  assert.ok(!included.includes('src/vendor/cssWorkerMain.js'));
 });
 
 test('extracts all expected Vue frontend node types', () => {

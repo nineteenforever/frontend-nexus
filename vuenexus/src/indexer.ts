@@ -7,6 +7,7 @@ import { parse as parseSfc } from '@vue/compiler-sfc';
 import { baseParse, NodeTypes } from '@vue/compiler-dom';
 
 const FRONTEND_EXTS = new Set(['.vue', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
+const JAVASCRIPT_EXTS = new Set(['.js', '.mjs', '.cjs']);
 const ASSET_EXTS = new Set(['.css', '.scss', '.sass', '.less', '.styl', '.json', '.gif', '.png', '.jpg', '.jpeg', '.svg', '.webp']);
 const IGNORE_DIRS = new Set([
   '.git',
@@ -19,6 +20,19 @@ const IGNORE_DIRS = new Set([
   '.vuenexus',
 ]);
 const ANALYSIS_CACHE_VERSION = 1;
+const GENERATED_JS_NAME_PATTERNS = [
+  /\.min\.(?:js|mjs|cjs)$/i,
+  /(?:^|[.-])jquery(?:[.-]|$)/i,
+  /(?:^|[.-])bootstrap(?:[.-]|$)/i,
+  /(?:^|[.-])lodash(?:[.-]|$)/i,
+  /(?:^|[.-])echarts(?:[.-]|$)/i,
+  /(?:^|[.-])monaco(?:[.-]|$)/i,
+  /(?:^|[.-])(?:css|html|json|editor|typescript|ts)\.?worker(?:main)?(?:[.-]|$)/i,
+  /(?:^|[.-])workermain(?:[.-]|$)/i,
+  /(?:^|[.-])runtime(?:[.-][a-f0-9]{6,})?\.(?:js|mjs|cjs)$/i,
+  /(?:^|[.-])vendor(?:[.-][a-f0-9]{6,})?\.(?:js|mjs|cjs)$/i,
+  /(?:^|[.-])chunk(?:[.-][a-f0-9]{6,})?\.(?:js|mjs|cjs)$/i,
+];
 
 function slash(filePath) {
   return filePath.split(path.sep).join('/');
@@ -66,8 +80,38 @@ function nodeText(sourceFile, node) {
   return sourceFile.text.slice(node.getStart(sourceFile), node.getEnd());
 }
 
-function walkFiles(root) {
+function generatedJsReason(filePath, stats) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (!JAVASCRIPT_EXTS.has(ext)) return undefined;
+  const baseName = path.basename(filePath);
+  if (GENERATED_JS_NAME_PATTERNS.some((pattern) => pattern.test(baseName))) {
+    return 'generated/minified filename';
+  }
+  if (stats.size < 128 * 1024) return undefined;
+  let sample = '';
+  try {
+    const fd = fs.openSync(filePath, 'r');
+    const bytes = Buffer.alloc(Math.min(stats.size, 256 * 1024));
+    const read = fs.readSync(fd, bytes, 0, bytes.length, 0);
+    fs.closeSync(fd);
+    sample = bytes.subarray(0, read).toString('utf8');
+  } catch {
+    return undefined;
+  }
+  const lines = sample.split(/\r?\n/);
+  const longestLine = lines.reduce((max, line) => Math.max(max, line.length), 0);
+  const averageLineLength = sample.length / Math.max(1, lines.length);
+  if (longestLine > 20000 || (stats.size > 256 * 1024 && averageLineLength > 800)) {
+    return 'generated/minified content';
+  }
+  if (/sourceMappingURL=.*\.map/.test(sample) && longestLine > 8000) return 'generated bundle content';
+  return undefined;
+}
+
+function walkFiles(root, options = {}) {
   const files = [];
+  const skipped = [];
+  const skipGenerated = options.skipGenerated !== false;
   const visit = (dir) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       if (IGNORE_DIRS.has(entry.name)) continue;
@@ -75,12 +119,20 @@ function walkFiles(root) {
       if (entry.isDirectory()) {
         visit(full);
       } else if (FRONTEND_EXTS.has(path.extname(entry.name))) {
+        if (skipGenerated) {
+          const stats = fs.statSync(full);
+          const reason = generatedJsReason(full, stats);
+          if (reason) {
+            skipped.push({ filePath: rel(root, full), reason, size: stats.size });
+            continue;
+          }
+        }
         files.push(full);
       }
     }
   };
   visit(root);
-  return files.sort();
+  return { files: files.sort(), skipped: skipped.sort((a, b) => a.filePath.localeCompare(b.filePath)) };
 }
 
 function lineOffsets(text) {
@@ -2713,8 +2765,9 @@ export function indexFrontendProject(root, options = {}) {
   const canUseIncrementalCache = options.incremental !== false && !options.diagnostics && checkerMode !== 'full';
   const canWriteIncrementalCache = !options.diagnostics && checkerMode !== 'full';
   progress('Scanning frontend files');
-  const files = walkFiles(root);
+  const { files, skipped } = walkFiles(root, { skipGenerated: options.skipGenerated });
   progress(`Found ${files.length} frontend files`);
+  if (skipped.length) progress(`Skipped ${skipped.length} generated/minified JS files`);
   const fileContents = new Map();
   const allRealFiles = new Set(files.map((file) => path.normalize(file)));
   const virtualFiles = new Map();
@@ -2871,6 +2924,7 @@ export function indexFrontendProject(root, options = {}) {
   return {
     root,
     files: files.length,
+    skippedFiles: skipped,
     nodes: graph.nodes,
     edges: graph.edges,
     cache: {

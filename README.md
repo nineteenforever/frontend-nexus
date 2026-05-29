@@ -17,7 +17,7 @@ npm install
 npm run build
 npm pack
 npm uninstall -g vuenexus
-npm install -g ./vuenexus-0.1.5.tgz
+npm install -g ./vuenexus-0.1.6.tgz
 ```
 
 Configure opencode MCP and the VueNexus skill:
@@ -65,6 +65,10 @@ want deeper TypeScript call-target resolution and can accept slower analysis.
 `.vuenexus/cache/analysis-cache.json`, reuses unchanged files on the next run, and re-analyzes changed files plus
 their import dependents. Use `vuenexus analyze -f` or `vuenexus analyze --force` when you want a clean full
 re-analysis and cache refresh.
+
+Generated or minified JavaScript files are skipped by default, including obvious vendor bundles such as
+`.min.js`, `jquery*.js`, `cssWorkerMain.js`, runtime/vendor/chunk bundles, and very large single-line JS files.
+Use `vuenexus analyze --include-generated` only when you intentionally want those files analyzed too.
 
 Analyze results are written to:
 

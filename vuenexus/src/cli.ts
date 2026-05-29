@@ -61,6 +61,7 @@ async function analyzeProject(opts) {
     diagnostics: opts.diagnostics,
     checkerMode: opts.checker,
     incremental: !opts.force && opts.incremental !== false,
+    skipGenerated: !opts.includeGenerated,
     onProgress: progress,
   });
   progress('Writing LadybugDB graph');
@@ -71,6 +72,7 @@ async function analyzeProject(opts) {
     lbugPath: written.lbugPath,
     repo: written.registeredName,
     files: graph.files,
+    skippedFiles: graph.skippedFiles.length,
     nodes: graph.nodes.size,
     edges: graph.edges.size,
     cache: graph.cache,
@@ -100,6 +102,7 @@ program
   .option('--checker <mode>', 'TypeScript checker mode for call resolution: fast, full, or off', 'fast')
   .option('-f, --force', 'force a full re-analysis and refresh the incremental cache')
   .option('--no-incremental', 'disable reading the incremental analysis cache')
+  .option('--include-generated', 'include generated/minified JavaScript files that are skipped by default')
   .option('--diagnostics', 'include full TypeScript semantic diagnostics; slower on large projects')
   .option('--json', 'suppress progress logs and print only JSON to stdout')
   .option('--quiet', 'suppress progress logs')
@@ -119,6 +122,7 @@ program
   .option('--checker <mode>', 'TypeScript checker mode for call resolution: fast, full, or off', 'fast')
   .option('-f, --force', 'force a full re-analysis and refresh the incremental cache')
   .option('--no-incremental', 'disable reading the incremental analysis cache')
+  .option('--include-generated', 'include generated/minified JavaScript files that are skipped by default')
   .option('--diagnostics', 'include full TypeScript semantic diagnostics; slower on large projects')
   .option('--json', 'suppress progress logs and print only JSON to stdout')
   .option('--quiet', 'suppress progress logs')
