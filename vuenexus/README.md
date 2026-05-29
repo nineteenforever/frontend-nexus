@@ -32,7 +32,7 @@ npm run check
 npm test
 npm pack
 npm uninstall -g vuenexus
-npm install -g ./vuenexus-0.1.3.tgz
+npm install -g ./vuenexus-0.1.4.tgz
 ```
 
 VueNexus is implemented in TypeScript and publishes compiled JavaScript from `dist`.
@@ -175,6 +175,7 @@ Analyze and serve:
 ```bash
 vuenexus analyze --root /path/to/vue-project --name my-vue-app --embedding
 vuenexus analyze --root /path/to/vue-project --embedding --provider local --model /models/bge-small-zh-v1.5
+vuenexus analyze --root /path/to/vue-project --checker full
 vuenexus analyze --root /path/to/vue-project --diagnostics
 vuenexus analyze --root /path/to/vue-project --json
 vuenexus analyze --root /path/to/vue-project --quiet
@@ -185,6 +186,12 @@ vuenexus ui --server http://127.0.0.1:4747 --ui-dir /path/to/frontend-nexus/vuen
 By default, `analyze` writes lightweight stage progress to stderr and the final JSON result to stdout. The progress
 messages are phase-level only, not per-file, so they are useful on large projects without materially slowing analysis.
 Use `--json` for machine-readable output with no progress logs, or `--quiet` to suppress progress logs.
+
+`analyze` defaults to `--checker fast`. Fast mode avoids expensive TypeScript checker calls for every call
+expression, so large Vue projects do not get stuck in deep dependency/type graphs. It still resolves Vue SFC,
+import/export, local calls, Vue template edges, routes, Pinia/Vuex relations, mixins, and common same-file calls.
+Use `--checker full` only when you need maximum TypeScript call-target resolution and can accept slower analysis.
+Use `--checker off` for the most conservative AST/local-only run.
 
 `analyze` skips full TypeScript semantic diagnostics by default because they can dominate runtime on large
 projects and do not affect graph generation. Use `--diagnostics` when you explicitly want the TypeScript

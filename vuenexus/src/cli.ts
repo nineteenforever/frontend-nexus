@@ -57,7 +57,11 @@ async function analyzeProject(opts) {
   const progress = createProgressLogger(opts);
   const started = Date.now();
   progress(`Analyzing ${root}`);
-  const graph = indexFrontendProject(root, { diagnostics: opts.diagnostics, onProgress: progress });
+  const graph = indexFrontendProject(root, {
+    diagnostics: opts.diagnostics,
+    checkerMode: opts.checker,
+    onProgress: progress,
+  });
   progress('Writing LadybugDB graph');
   const written = await writeVueNexusLbug(graph, root, { name: opts.name });
   progress(`Graph stored at ${written.lbugPath}`);
@@ -91,6 +95,7 @@ program
   .option('--model <pathOrName>', 'local model directory or HTTP model name for --embedding')
   .option('--model-package <packageName>', 'npm package that contains a local embedding model')
   .option('--batch-size <n>', 'embedding batch size')
+  .option('--checker <mode>', 'TypeScript checker mode for call resolution: fast, full, or off', 'fast')
   .option('--diagnostics', 'include full TypeScript semantic diagnostics; slower on large projects')
   .option('--json', 'suppress progress logs and print only JSON to stdout')
   .option('--quiet', 'suppress progress logs')
@@ -107,6 +112,7 @@ program
   .option('--model <pathOrName>', 'local model directory or HTTP model name for --embedding')
   .option('--model-package <packageName>', 'npm package that contains a local embedding model')
   .option('--batch-size <n>', 'embedding batch size')
+  .option('--checker <mode>', 'TypeScript checker mode for call resolution: fast, full, or off', 'fast')
   .option('--diagnostics', 'include full TypeScript semantic diagnostics; slower on large projects')
   .option('--json', 'suppress progress logs and print only JSON to stdout')
   .option('--quiet', 'suppress progress logs')

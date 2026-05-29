@@ -223,6 +223,16 @@ function isExported(node) {
   return Boolean(ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Export);
 }
 
+function isExportedVariableDeclaration(node) {
+  return Boolean(
+    node?.parent &&
+      ts.isVariableDeclarationList(node.parent) &&
+      node.parent.parent &&
+      ts.isVariableStatement(node.parent.parent) &&
+      isExported(node.parent.parent),
+  );
+}
+
 function nameOfBindingName(name) {
   return ts.isIdentifier(name) ? name.text : undefined;
 }
@@ -654,7 +664,7 @@ function resolveImportTarget(root, sourceFile, spec, allRealFiles, virtualByVueF
   );
 }
 
-function createGraph(root) {
+function createGraph(root, options = {}) {
   const nodes = new Map();
   const edges = new Map();
   const byDeclaration = new Map();
@@ -724,6 +734,8 @@ function createGraph(root) {
 
   return {
     root,
+    checkerMode: options.checkerMode ?? 'fast',
+    slowCheckerThresholdMs: options.slowCheckerThresholdMs ?? 2000,
     nodes,
     edges,
     byDeclaration,
@@ -972,9 +984,20 @@ function isRecoverableTypeCheckerError(err) {
 }
 
 function safeCheckerCall(graph, sourceFile, node, operation, fn) {
+  if (graph.checkerMode !== 'full') return undefined;
   if (graph.typeCheckerDisabled) return undefined;
+  const started = Date.now();
   try {
-    return fn();
+    const value = fn();
+    const durationMs = Date.now() - started;
+    if (durationMs > graph.slowCheckerThresholdMs) {
+      graph.checkerFailures.push({
+        file: rel(graph.root, sourceFile.realPath ?? sourceFile.fileName),
+        line: node ? sourceLine(sourceFile, node) : 0,
+        message: `TypeScript checker was slow during ${operation}: ${durationMs}ms. Use the default --checker fast mode if analyze is too slow.`,
+      });
+    }
+    return value;
   } catch (err) {
     if (!isRecoverableTypeCheckerError(err)) throw err;
     graph.typeCheckerDisabled = true;
@@ -1007,6 +1030,7 @@ function resolvedCallTarget(graph, checker, expr) {
   const localThisTarget = thisMemberTarget(graph, expr.getSourceFile(), callee);
   const localTarget = localCalleeTarget(graph, expr.getSourceFile(), callee);
   if (localTarget) return localTarget;
+  if (graph.checkerMode !== 'full') return localThisTarget;
   const sig = safeCheckerCall(graph, expr.getSourceFile(), expr, 'call signature resolution', () =>
     checker.getResolvedSignature(expr),
   );
@@ -1302,12 +1326,13 @@ function collectDeclarations(graph, root, sourceFile) {
     }
 
     if (ts.isVariableDeclaration(node)) {
+      const exported = isExportedVariableDeclaration(node);
       const name = nameOfBindingName(node.name);
       if (!name) {
         const names = bindingNames(node.name);
         let firstId;
         for (const binding of names) {
-          const id = addDeclarationNode(graph, root, sourceFile, binding.node, 'Variable', binding.name, false, {
+          const id = addDeclarationNode(graph, root, sourceFile, binding.node, 'Variable', binding.name, exported, {
             kind: 'destructured-variable',
           });
           firstId ??= id;
@@ -1318,13 +1343,13 @@ function collectDeclarations(graph, root, sourceFile) {
       }
       if (node.initializer && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))) {
         const type = isComposableName(name) ? 'Composable' : 'Function';
-        const id = addDeclarationNode(graph, root, sourceFile, node, type, name, false, {
+        const id = addDeclarationNode(graph, root, sourceFile, node, type, name, exported, {
           kind: 'variable-function',
         });
         fileLocal.set(name, id);
       } else {
         const type = classifyVariable(sourceFile, node, name);
-        const id = addDeclarationNode(graph, root, sourceFile, node, type, name, false, {
+        const id = addDeclarationNode(graph, root, sourceFile, node, type, name, exported, {
           kind: 'variable',
         });
         fileLocal.set(name, id);
@@ -2554,6 +2579,7 @@ function progressTicker(progress, root, label, total, intervalMs = 5000) {
 export function indexFrontendProject(root, options = {}) {
   root = path.resolve(root);
   const progress = typeof options.onProgress === 'function' ? options.onProgress : () => {};
+  const checkerMode = ['off', 'fast', 'full'].includes(options.checkerMode) ? options.checkerMode : 'fast';
   progress('Scanning frontend files');
   const files = walkFiles(root);
   progress(`Found ${files.length} frontend files`);
@@ -2561,7 +2587,7 @@ export function indexFrontendProject(root, options = {}) {
   const virtualFiles = new Map();
   const virtualByVueFile = new Map();
   const vueInfoByRealPath = new Map();
-  const graph = createGraph(root);
+  const graph = createGraph(root, { checkerMode });
   graph.allRealFiles = allRealFiles;
   graph.virtualByVueFile = virtualByVueFile;
 
@@ -2615,7 +2641,8 @@ export function indexFrontendProject(root, options = {}) {
 
   progress('Creating TypeScript program');
   const program = createProgram(root, files, virtualFiles, virtualByVueFile);
-  const checker = program.getTypeChecker();
+  progress(`TypeScript checker mode: ${checkerMode}`);
+  const checker = checkerMode === 'full' ? program.getTypeChecker() : undefined;
   const sourceFiles = program
     .getSourceFiles()
     .filter((sf) => !sf.isDeclarationFile && sf.realPath && sf.realPath.startsWith(root));

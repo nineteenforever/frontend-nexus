@@ -17,7 +17,7 @@ npm install
 npm run build
 npm pack
 npm uninstall -g vuenexus
-npm install -g ./vuenexus-0.1.3.tgz
+npm install -g ./vuenexus-0.1.4.tgz
 ```
 
 Configure opencode MCP and the VueNexus skill:
@@ -54,6 +54,12 @@ In any Vue repository:
 cd /path/to/vue-project
 vuenexus analyze
 ```
+
+`vuenexus analyze` defaults to `--checker fast`, which is the recommended mode for large Vue projects. It avoids
+expensive TypeScript checker calls for every call expression and keeps the run from getting stuck in complex
+dependency/type graphs, while still resolving Vue SFC, import/export, local calls, route, component, Pinia, Vuex,
+and mixin relationships through AST-first analysis. Use `vuenexus analyze --checker full` only when you explicitly
+want deeper TypeScript call-target resolution and can accept slower analysis.
 
 Analyze results are written to:
 
