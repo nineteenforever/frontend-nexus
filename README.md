@@ -17,7 +17,7 @@ npm install
 npm run build
 npm pack
 npm uninstall -g vuenexus
-npm install -g ./vuenexus-0.1.2.tgz
+npm install -g ./vuenexus-0.1.3.tgz
 ```
 
 Configure opencode MCP and the VueNexus skill:

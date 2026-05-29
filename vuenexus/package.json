@@ -1,6 +1,6 @@
 {
   "name": "vuenexus",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "VueNexus analyzes Vue projects into precise TS/Vue graph and embedding stores.",
   "type": "module",
   "bin": {

@@ -2540,6 +2540,17 @@ function createProgram(root, realFiles, virtualFiles, virtualByVueFile) {
   return ts.createProgram(allFileNames, options, host);
 }
 
+function progressTicker(progress, root, label, total, intervalMs = 5000) {
+  let last = Date.now();
+  return (index, sourceFile) => {
+    const now = Date.now();
+    if (index !== 0 && index !== total - 1 && now - last < intervalMs) return;
+    last = now;
+    const filePath = sourceFile?.realPath ? rel(root, sourceFile.realPath) : sourceFile?.fileName ?? '';
+    progress(`${label}: ${index + 1}/${total}${filePath ? ` ${filePath}` : ''}`);
+  };
+}
+
 export function indexFrontendProject(root, options = {}) {
   root = path.resolve(root);
   const progress = typeof options.onProgress === 'function' ? options.onProgress : () => {};
@@ -2611,10 +2622,16 @@ export function indexFrontendProject(root, options = {}) {
   progress(`TypeScript program ready with ${sourceFiles.length} project source files`);
 
   progress('Collecting declarations');
-  for (const sourceFile of sourceFiles) collectDeclarations(graph, root, sourceFile);
+  const declarationProgress = progressTicker(progress, root, 'Collecting declarations', sourceFiles.length);
+  for (const [index, sourceFile] of sourceFiles.entries()) {
+    declarationProgress(index, sourceFile);
+    collectDeclarations(graph, root, sourceFile);
+  }
   progress(`Collected declarations: ${graph.nodes.size} nodes`);
   progress('Collecting imports and calls');
-  for (const sourceFile of sourceFiles) {
+  const callProgress = progressTicker(progress, root, 'Collecting imports and calls', sourceFiles.length);
+  for (const [index, sourceFile] of sourceFiles.entries()) {
+    callProgress(index, sourceFile);
     collectImportsAndCalls(graph, root, checker, sourceFile, allRealFiles, virtualByVueFile);
   }
   progress(`Collected imports and calls: ${graph.edges.size} edges`);

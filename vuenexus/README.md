@@ -32,7 +32,7 @@ npm run check
 npm test
 npm pack
 npm uninstall -g vuenexus
-npm install -g ./vuenexus-0.1.2.tgz
+npm install -g ./vuenexus-0.1.3.tgz
 ```
 
 VueNexus is implemented in TypeScript and publishes compiled JavaScript from `dist`.
