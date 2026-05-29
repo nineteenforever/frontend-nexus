@@ -68,14 +68,17 @@ Recommended MCP config:
 
 ```json
 {
-  "mcpServers": {
+  "mcp": {
     "vuenexus": {
-      "command": "npx",
-      "args": ["-y", "--package", "vuenexus@latest", "vuenexus", "mcp", "--db", ".vuenexus/lbug"]
+      "type": "local",
+      "command": ["vuenexus", "mcp"],
+      "enabled": true
     }
   }
 }
 ```
+
+`vuenexus mcp` reads the current workspace's `.vuenexus/lbug` by default. Add `--db /absolute/path/to/.vuenexus/lbug` only when the agent starts MCP from outside the analyzed project.
 
 Prefer MCP tools in this order:
 

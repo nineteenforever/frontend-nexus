@@ -30,7 +30,9 @@ npm install
 npm run build
 npm run check
 npm test
-node dist/cli.js analyze --root /path/to/vue-project --name my-vue-app --embedding
+npm pack
+npm uninstall -g vuenexus
+npm install -g ./vuenexus-0.1.2.tgz
 ```
 
 VueNexus is implemented in TypeScript and publishes compiled JavaScript from `dist`.
@@ -205,7 +207,7 @@ vuenexus semantic --db /path/to/vue-project/.vuenexus/lbug --query "用户登录
 Run MCP:
 
 ```bash
-vuenexus mcp --db /path/to/vue-project/.vuenexus/lbug
+vuenexus mcp
 ```
 
 Set up opencode:

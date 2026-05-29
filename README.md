@@ -1,30 +1,125 @@
 # frontend-nexus
 
-This repository is split into two maintainable projects:
+`frontend-nexus` contains two projects:
 
-- `vuenexus`: CLI, analyzer, LadybugDB storage, MCP server, setup command, and API server. Run `npm pack` from this directory when you want to create the installable `vuenexus` package.
-- `vuenexus-web`: independent Vite + React + TypeScript browser UI, equivalent in relationship to `gitnexus-web` and `gitnexus`. It consumes the GitNexus-compatible APIs exposed by `vuenexus serve`.
+- `vuenexus`: CLI package, Vue analyzer, LadybugDB storage, MCP server, opencode setup, and `vuenexus serve` API.
+- `vuenexus-web`: standalone Vite + React + TypeScript browser UI. Its relationship to `vuenexus` is the same as `gitnexus-web` to `gitnexus`.
 
-Typical local workflow:
+Use Node.js `^20.19.0 || >=22.12.0`. Node 22 LTS is recommended.
+
+## Quick Start In An Internal Network
+
+Build and install the CLI from this repo:
 
 ```bash
 cd vuenexus
 npm install
 npm run build
 npm pack
+npm uninstall -g vuenexus
+npm install -g ./vuenexus-0.1.2.tgz
 ```
 
+Configure opencode MCP and the VueNexus skill:
+
 ```bash
-cd ../vuenexus-web
+vuenexus setup
+```
+
+Expected opencode MCP entry:
+
+```json
+{
+  "mcp": {
+    "vuenexus": {
+      "type": "local",
+      "command": ["vuenexus", "mcp"],
+      "enabled": true
+    }
+  }
+}
+```
+
+`vuenexus setup` also installs the skill file. On Windows, opencode config and skills are usually under:
+
+```text
+C:\Users\<you>\.config\opencode\
+```
+
+## Analyze A Vue Project
+
+In any Vue repository:
+
+```bash
+cd /path/to/vue-project
+vuenexus analyze
+```
+
+Analyze results are written to:
+
+```text
+/path/to/vue-project/.vuenexus/lbug
+/path/to/vue-project/.vuenexus/meta.json
+~/.vuenexus/registry.json
+```
+
+Quick checks:
+
+```bash
+vuenexus stats
+vuenexus query "App"
+vuenexus context --symbol App
+vuenexus chain --from App --depth 5
+vuenexus cypher "MATCH (a)-[r:CodeRelation]->(b) RETURN a.id, r.type, b.id LIMIT 20"
+```
+
+Start opencode from the analyzed project:
+
+```bash
+opencode .
+```
+
+opencode starts the MCP command `vuenexus mcp`. Because it starts from the Vue project directory, `vuenexus mcp` automatically reads `./.vuenexus/lbug`. You normally do not need `--db`.
+
+## Browser Graph UI
+
+Start the API server:
+
+```bash
+vuenexus serve --port 3000
+```
+
+Start the Web UI from this repository:
+
+```bash
+cd /path/to/frontend-nexus/vuenexus-web
 npm install
 npm run dev
 ```
 
-Then, inside an analyzed project or a project where `vuenexus` is globally installed:
+Open:
 
-```bash
-vuenexus analyze --root /path/to/vue-project
-vuenexus serve --port 3000
+```text
+http://127.0.0.1:5173
 ```
 
-Open the `vuenexus-web` dev URL, usually `http://127.0.0.1:5173`, and enter `http://127.0.0.1:3000` as the VueNexus server.
+Enter this VueNexus server URL:
+
+```text
+http://127.0.0.1:3000
+```
+
+`vuenexus serve` reads `~/.vuenexus/registry.json`, so the UI can list multiple projects that have been analyzed.
+
+## Evaluate Whether VueNexus Works Well
+
+Use [EVALUATION_GUIDE.md](./EVALUATION_GUIDE.md) when you want opencode or another agent to compare source code with analyze results. It is an evaluation protocol, not an installed skill.
+
+## Project Layout
+
+```text
+frontend-nexus/
+  vuenexus/        CLI package, analyzer, MCP, storage, serve API
+  vuenexus-web/    browser UI project
+  other/           miscellaneous research notes and old error logs
+```
