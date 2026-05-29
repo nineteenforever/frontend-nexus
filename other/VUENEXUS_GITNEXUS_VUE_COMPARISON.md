@@ -13,24 +13,24 @@
 
 ### GitNexus
 
-GitNexus 已经支持 `.vue` 文件，但它的 Vue 支持是挂在多语言 tree-sitter pipeline 上的。
+GitNexus 对 `.vue` 文件有有限支持，但不是完整的 Vue SFC 解析器支持。更准确地说，它是在多语言 tree-sitter pipeline 里给 `.vue` 做了一层预处理：先从 SFC 文本里抽出 script，再按 TypeScript/JavaScript 解析。
 
 关键实现方式：
 
 - `.vue` 作为一种语言 provider，复用 TypeScript/JavaScript 的 query、import resolver、call extractor、type extractor、field extractor 等基础设施。
-- `.vue` 文件先通过 `vue-sfc-extractor` 抽取 `<script>` 或 `<script setup>` 内容，再交给 TypeScript tree-sitter grammar 解析。
+- `.vue` 文件先通过 `vue-sfc-extractor` 用正则抽取 `<script>` 或 `<script setup>` 内容，再交给 TypeScript tree-sitter grammar 解析。
 - `<script setup>` 顶层绑定会被当作隐式 export 处理。
 - Vue 内置函数如 `ref`、`reactive`、`computed`、`watch`、`defineProps`、`defineEmits` 等被加入 built-in 名单，避免被当作普通业务调用目标。
 - 模板组件支持主要是抽取 PascalCase 标签，然后根据 import map 找同名 `.vue` import，生成 `CALLS` 边到被渲染组件文件。
 
-从源码看，GitNexus 的 Vue SFC 抽取器主要是正则式抽取：
+从源码看，GitNexus 的 Vue 处理主要是正则式 SFC 片段抽取，不是 `@vue/compiler-sfc` / `@vue/compiler-dom` 这种官方 AST 解析：
 
 - `<script>` / `<script setup>` 抽取：`src/core/ingestion/vue-sfc-extractor.ts`
 - 模板 PascalCase 组件抽取：同文件 `extractTemplateComponents`
 - Vue provider：`src/core/ingestion/languages/vue.ts`
 - 模板组件边：`src/core/ingestion/call-processor.ts`
 
-这套方案的好处是能接入 GitNexus 大 pipeline，不需要给 Vue 单独维护完全不同的存储、MCP、Web、embedding、增量和查询体系。代价是 Vue 模板语义较浅：它更像“把 SFC 里的 script 当 TS 解析，再补一点模板组件识别”。
+这套方案的好处是能接入 GitNexus 大 pipeline，不需要给 Vue 单独维护完全不同的存储、MCP、Web、embedding、增量和查询体系。代价是 Vue SFC/template 语义较浅：它更像“把 `.vue` 里的 script 抽出来当 TS/JS 解析，再补一点模板组件识别”。
 
 ### VueNexus
 
@@ -66,7 +66,7 @@ GitNexus 的 analyze 是完整工程化 pipeline。大致流程：
 2. 读取已有 meta、file hash、parse cache，用于判断是否可增量或需要全量。
 3. 文件系统遍历，按语言识别文件。
 4. 对各语言加载 tree-sitter parser。
-5. 对 `.vue` 文件先抽取 `<script>` / `<script setup>`，再当 TypeScript parse。
+5. 对 `.vue` 文件用正则抽取 `<script>` / `<script setup>`，再当 TypeScript parse。
 6. 运行 DAG pipeline：
    - parsing
    - import resolving
@@ -208,7 +208,7 @@ VueNexus 在存储上兼容 LadybugDB/Web 消费形态，但在 `description` �
 | 维度 | GitNexus | VueNexus |
 | --- | --- | --- |
 | 目标 | 多语言通用代码图谱 | Vue 前端专用图谱 |
-| Vue SFC script | 正则抽取后用 TypeScript tree-sitter | Vue 官方 SFC parser + TS Program |
+| Vue SFC script | 正则抽取 script 后用 TypeScript tree-sitter | Vue 官方 SFC parser + TS Program |
 | Vue template | PascalCase component 抽取为 `CALLS` | 官方 template AST，生成 `RENDERS` / `HANDLES` |
 | Vue Router | 非核心 Vue 专用能力 | 专门生成 `ROUTES_TO` |
 | Pinia/Vuex | 非核心 Vue 专用能力 | 专门生成 `USES_STORE` 和 store action `CALLS` |
