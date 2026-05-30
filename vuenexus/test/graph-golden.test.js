@@ -53,9 +53,12 @@ test('reuses unchanged files from the incremental analysis cache', () => {
 
   const first = indexFrontendProject(tmpRoot);
   const second = indexFrontendProject(tmpRoot);
+  const manifest = JSON.parse(fs.readFileSync(path.join(tmpRoot, '.vuenexus', 'cache', 'analysis-cache.json'), 'utf8'));
 
   assert.equal(first.cache.hitFiles, 0);
   assert.ok(second.cache.hitFiles > 0, 'second analyze should reuse cached file slices');
+  assert.ok(Object.values(manifest.files).every((entry) => entry.slice && !entry.nodes && !entry.edges));
+  assert.ok(fs.readdirSync(path.join(tmpRoot, '.vuenexus', 'cache', 'files')).length > 0);
   assert.equal(second.nodes.size, first.nodes.size);
   assert.equal(second.edges.size, first.edges.size);
 });

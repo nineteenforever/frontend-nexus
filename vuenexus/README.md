@@ -32,7 +32,7 @@ npm run check
 npm test
 npm pack
 npm uninstall -g vuenexus
-npm install -g ./vuenexus-0.1.6.tgz
+npm install -g ./vuenexus-0.1.7.tgz
 ```
 
 VueNexus is implemented in TypeScript and publishes compiled JavaScript from `dist`.
@@ -195,10 +195,11 @@ import/export, local calls, Vue template edges, routes, Pinia/Vuex relations, mi
 Use `--checker full` only when you need maximum TypeScript call-target resolution and can accept slower analysis.
 Use `--checker off` for the most conservative AST/local-only run.
 
-`analyze` uses incremental analysis by default. The cache lives at `.vuenexus/cache/analysis-cache.json` and stores
-per-file graph slices, import dependencies, local symbols, and content hashes. On the next run, VueNexus reuses
-unchanged file slices and re-analyzes changed files plus files that import them. Use `-f` or `--force` to do a full
-clean re-analysis and refresh the cache. Use `--no-incremental` to ignore the cache for a single run.
+`analyze` uses incremental analysis by default. The cache stores a small manifest at
+`.vuenexus/cache/analysis-cache.json` and per-file graph slices under `.vuenexus/cache/files/`. On the next run,
+VueNexus reuses unchanged file slices and re-analyzes changed files plus files that import them. Use `-f` or
+`--force` to do a full clean re-analysis and refresh the cache. Use `--no-incremental` to ignore the cache for a
+single run.
 
 `analyze` skips generated or minified JavaScript by default. The filter covers obvious vendor/bundle filenames such
 as `.min.js`, `jquery*.js`, `cssWorkerMain.js`, runtime/vendor/chunk bundles, very large single-line JS files, and

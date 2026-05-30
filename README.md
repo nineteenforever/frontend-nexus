@@ -17,7 +17,7 @@ npm install
 npm run build
 npm pack
 npm uninstall -g vuenexus
-npm install -g ./vuenexus-0.1.6.tgz
+npm install -g ./vuenexus-0.1.7.tgz
 ```
 
 Configure opencode MCP and the VueNexus skill:
@@ -61,10 +61,10 @@ dependency/type graphs, while still resolving Vue SFC, import/export, local call
 and mixin relationships through AST-first analysis. Use `vuenexus analyze --checker full` only when you explicitly
 want deeper TypeScript call-target resolution and can accept slower analysis.
 
-`vuenexus analyze` also uses an incremental analysis cache by default. It stores per-file graph slices under
-`.vuenexus/cache/analysis-cache.json`, reuses unchanged files on the next run, and re-analyzes changed files plus
-their import dependents. Use `vuenexus analyze -f` or `vuenexus analyze --force` when you want a clean full
-re-analysis and cache refresh.
+`vuenexus analyze` also uses an incremental analysis cache by default. It stores a small manifest at
+`.vuenexus/cache/analysis-cache.json` and per-file graph slices under `.vuenexus/cache/files/`, reuses unchanged
+files on the next run, and re-analyzes changed files plus their import dependents. Use `vuenexus analyze -f` or
+`vuenexus analyze --force` when you want a clean full re-analysis and cache refresh.
 
 Generated or minified JavaScript files are skipped by default, including obvious vendor bundles such as
 `.min.js`, `jquery*.js`, `cssWorkerMain.js`, runtime/vendor/chunk bundles, very large single-line JS files, and

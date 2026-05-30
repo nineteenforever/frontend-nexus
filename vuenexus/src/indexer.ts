@@ -20,7 +20,7 @@ const IGNORE_DIRS = new Set([
   '.vuenexus',
 ]);
 const STATIC_PUBLIC_DIRS = new Set(['public', 'static']);
-const ANALYSIS_CACHE_VERSION = 1;
+const ANALYSIS_CACHE_VERSION = 2;
 const GENERATED_JS_NAME_PATTERNS = [
   /\.min\.(?:js|mjs|cjs)$/i,
   /(?:^|[.-])jquery(?:[.-]|$)/i,
@@ -50,6 +50,18 @@ function fileKey(filePath) {
 
 function analysisCachePath(root) {
   return path.join(root, '.vuenexus', 'cache', 'analysis-cache.json');
+}
+
+function analysisCacheDir(root) {
+  return path.join(root, '.vuenexus', 'cache');
+}
+
+function analysisCacheSlicesDir(root) {
+  return path.join(analysisCacheDir(root), 'files');
+}
+
+function analysisCacheSliceName(filePath) {
+  return `${contentHash(filePath)}.json`;
 }
 
 function contentHash(content) {
@@ -2718,6 +2730,11 @@ function impactedCacheFiles(cache, changed, currentFilePaths = []) {
   return impacted;
 }
 
+function readCachedFileSlice(root, entry) {
+  if (!entry?.slice) return undefined;
+  return readJsonFile(path.join(analysisCacheSlicesDir(root), entry.slice));
+}
+
 function restoreCachedFileSlice(graph, entry) {
   for (const node of entry.nodes ?? []) graph.addNode(node);
   for (const edge of entry.edges ?? []) graph.addEdge(edge);
@@ -2728,6 +2745,9 @@ function restoreCachedFileSlice(graph, entry) {
 
 function writeAnalysisCache(root, graph, files, fileContents, sourceFiles, importsByFile, checkerMode) {
   const entries = {};
+  const slicesDir = analysisCacheSlicesDir(root);
+  fs.rmSync(slicesDir, { recursive: true, force: true });
+  fs.mkdirSync(slicesDir, { recursive: true });
   const sourceKeyByRel = new Map(sourceFiles.map((sourceFile) => [sourceFileRelPath(root, sourceFile), sourceFileSymbolKey(sourceFile)]));
   const externalNodes = [...graph.nodes.values()].filter((node) => !node.filePath);
   for (const file of files) {
@@ -2746,13 +2766,17 @@ function writeAnalysisCache(root, graph, files, fileContents, sourceFiles, impor
         nodeIds.has(edge.source) ||
         nodeIds.has(edge.target),
     );
-    entries[filePath] = {
-      hash: contentHash(fileContents.get(file) ?? ''),
-      imports: importsByFile.get(filePath) ?? [],
+    const sliceName = analysisCacheSliceName(filePath);
+    writeJsonFile(path.join(slicesDir, sliceName), {
       localSymbolsKey: sourceKey,
       localSymbols: sourceKey ? [...(graph.localSymbols.get(sourceKey) ?? new Map()).entries()] : [],
       nodes,
       edges,
+    });
+    entries[filePath] = {
+      hash: contentHash(fileContents.get(file) ?? ''),
+      imports: importsByFile.get(filePath) ?? [],
+      slice: sliceName,
     };
   }
   writeJsonFile(analysisCachePath(root), {
@@ -2870,7 +2894,12 @@ export function indexFrontendProject(root, options = {}) {
   if (usableCache) {
     for (const [filePath, entry] of Object.entries(usableCache.files ?? {})) {
       if (!sourceFileByRel.has(filePath) || impactedFiles.has(filePath)) continue;
-      restoreCachedFileSlice(graph, entry);
+      const slice = readCachedFileSlice(root, entry);
+      if (!slice) {
+        impactedFiles.add(filePath);
+        continue;
+      }
+      restoreCachedFileSlice(graph, slice);
       cacheHitFiles++;
     }
     progress(`Incremental cache: ${cacheHitFiles} reused, ${sourceFiles.length - cacheHitFiles} analyzed, ${impactedFiles.size} impacted`);
@@ -2942,7 +2971,13 @@ export function indexFrontendProject(root, options = {}) {
   }
   if (canWriteIncrementalCache) {
     progress('Writing incremental analysis cache');
-    writeAnalysisCache(root, graph, files, fileContents, sourceFiles, importsByFile, checkerMode);
+    try {
+      writeAnalysisCache(root, graph, files, fileContents, sourceFiles, importsByFile, checkerMode);
+    } catch (err) {
+      const message = `Incremental cache write failed: ${err instanceof Error ? err.message : String(err)}. Analysis results are still valid; next run may be slower.`;
+      progress(message);
+      graph.checkerFailures.push({ file: '', line: 0, message });
+    }
   }
 
   return {
