@@ -1,5 +1,0 @@
-vuenexus serve
-VueNexus frontend-only server listening at http://127.0.0.1:3000
-
-我在本地启动gitnexus-web, 浏览器url 是http://localhost:5173/， 我在页面输入 http://127.0.0.1:3000， 点击connect, 浏览器显示
-Server returned 500: Internal Server Error
