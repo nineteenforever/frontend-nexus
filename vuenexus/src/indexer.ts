@@ -19,6 +19,7 @@ const IGNORE_DIRS = new Set([
   'coverage',
   '.vuenexus',
 ]);
+const STATIC_PUBLIC_DIRS = new Set(['public', 'static']);
 const ANALYSIS_CACHE_VERSION = 1;
 const GENERATED_JS_NAME_PATTERNS = [
   /\.min\.(?:js|mjs|cjs)$/i,
@@ -117,6 +118,10 @@ function walkFiles(root, options = {}) {
       if (IGNORE_DIRS.has(entry.name)) continue;
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) {
+        if (skipGenerated && STATIC_PUBLIC_DIRS.has(entry.name.toLowerCase())) {
+          skipped.push({ filePath: rel(root, full), reason: 'static public directory', size: 0, directory: true });
+          continue;
+        }
         visit(full);
       } else if (FRONTEND_EXTS.has(path.extname(entry.name))) {
         if (skipGenerated) {
@@ -2774,13 +2779,17 @@ export function indexFrontendProject(root, options = {}) {
   const { files, skipped } = walkFiles(root, { skipGenerated: options.skipGenerated });
   progress(`Found ${files.length} frontend files`);
   if (skipped.length) {
-    progress(`Skipped ${skipped.length} generated/minified JS files`);
+    progress(`Skipped ${skipped.length} generated/static entries`);
     const previewLimit = 30;
     for (const item of skipped.slice(0, previewLimit)) {
-      progress(`Skipped generated JS: ${item.filePath} (${item.reason}, ${prettyBytes(item.size)})`);
+      progress(
+        item.directory
+          ? `Skipped static directory: ${item.filePath} (${item.reason})`
+          : `Skipped generated JS: ${item.filePath} (${item.reason}, ${prettyBytes(item.size)})`,
+      );
     }
     if (skipped.length > previewLimit) {
-      progress(`Skipped generated JS: ${skipped.length - previewLimit} more files not shown`);
+      progress(`Skipped generated/static entries: ${skipped.length - previewLimit} more not shown`);
     }
   }
   const fileContents = new Map();

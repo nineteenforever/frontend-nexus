@@ -68,14 +68,20 @@ test('skips generated or minified JavaScript files by default', () => {
   fs.mkdirSync(generatedDir, { recursive: true });
   fs.writeFileSync(path.join(generatedDir, 'jquery.min.js'), 'function ignored(){return true}\n');
   fs.writeFileSync(path.join(generatedDir, 'cssWorkerMain.js'), 'function ignoredWorker(){return true}\n');
+  const publicDir = path.join(tmpRoot, 'packages', 'admin', 'public');
+  fs.mkdirSync(publicDir, { recursive: true });
+  fs.writeFileSync(path.join(publicDir, 'runtime.js'), 'function ignoredRuntime(){return true}\n');
+  fs.writeFileSync(path.join(publicDir, 'plain.js'), 'function ignoredPublic(){return true}\n');
 
   const graph = indexFrontendProject(tmpRoot);
   const included = [...graph.nodes.values()].filter((node) => node.type === 'File').map((node) => node.filePath);
 
   assert.equal(graph.files, 10);
-  assert.equal(graph.skippedFiles.length, 2);
+  assert.equal(graph.skippedFiles.length, 3);
   assert.ok(!included.includes('src/vendor/jquery.min.js'));
   assert.ok(!included.includes('src/vendor/cssWorkerMain.js'));
+  assert.ok(!included.includes('packages/admin/public/runtime.js'));
+  assert.ok(!included.includes('packages/admin/public/plain.js'));
 });
 
 test('extracts all expected Vue frontend node types', () => {

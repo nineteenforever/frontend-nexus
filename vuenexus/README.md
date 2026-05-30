@@ -201,9 +201,10 @@ unchanged file slices and re-analyzes changed files plus files that import them.
 clean re-analysis and refresh the cache. Use `--no-incremental` to ignore the cache for a single run.
 
 `analyze` skips generated or minified JavaScript by default. The filter covers obvious vendor/bundle filenames such
-as `.min.js`, `jquery*.js`, `cssWorkerMain.js`, runtime/vendor/chunk bundles, and very large single-line JS files.
-Analyze progress prints each skipped file path, reason, and size. Use `--include-generated` when you intentionally
-want those files included in the graph.
+as `.min.js`, `jquery*.js`, `cssWorkerMain.js`, runtime/vendor/chunk bundles, very large single-line JS files, and
+any `public/` or `static/` directory found inside a monorepo package. Analyze progress prints each skipped path,
+reason, and size when available. Use `--include-generated` when you intentionally want those files included in the
+graph.
 
 `analyze` skips full TypeScript semantic diagnostics by default because they can dominate runtime on large
 projects and do not affect graph generation. Use `--diagnostics` when you explicitly want the TypeScript
@@ -503,7 +504,7 @@ vben-use-form.vue @keydown.enter
 ## Current Limits
 
 - This is Vue/frontend-only by design.
-- Full monorepo analysis can still be slow on cold cache; prefer package-level roots for the first run, keep generated JS filtering enabled, then use the default incremental cache for repeated analysis.
+- Full monorepo analysis can still be slow on cold cache; prefer package-level roots for the first run, keep generated/static filtering enabled, then use the default incremental cache for repeated analysis.
 - Template expression extraction links identifier references, but it does not execute Vue runtime behavior.
 - Third-party component internals are only linked when their source exists inside the analyzed root.
 - Embedding storage is available, but graph precision remains parser/checker based and independent from vector search.
