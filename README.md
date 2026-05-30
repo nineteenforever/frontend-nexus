@@ -68,7 +68,8 @@ re-analysis and cache refresh.
 
 Generated or minified JavaScript files are skipped by default, including obvious vendor bundles such as
 `.min.js`, `jquery*.js`, `cssWorkerMain.js`, runtime/vendor/chunk bundles, and very large single-line JS files.
-Use `vuenexus analyze --include-generated` only when you intentionally want those files analyzed too.
+Analyze progress prints each skipped file path, reason, and size. Use `vuenexus analyze --include-generated` only
+when you intentionally want those files analyzed too.
 
 Analyze results are written to:
 

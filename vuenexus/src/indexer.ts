@@ -2758,6 +2758,12 @@ function writeAnalysisCache(root, graph, files, fileContents, sourceFiles, impor
   });
 }
 
+function prettyBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
 export function indexFrontendProject(root, options = {}) {
   root = path.resolve(root);
   const progress = typeof options.onProgress === 'function' ? options.onProgress : () => {};
@@ -2767,7 +2773,16 @@ export function indexFrontendProject(root, options = {}) {
   progress('Scanning frontend files');
   const { files, skipped } = walkFiles(root, { skipGenerated: options.skipGenerated });
   progress(`Found ${files.length} frontend files`);
-  if (skipped.length) progress(`Skipped ${skipped.length} generated/minified JS files`);
+  if (skipped.length) {
+    progress(`Skipped ${skipped.length} generated/minified JS files`);
+    const previewLimit = 30;
+    for (const item of skipped.slice(0, previewLimit)) {
+      progress(`Skipped generated JS: ${item.filePath} (${item.reason}, ${prettyBytes(item.size)})`);
+    }
+    if (skipped.length > previewLimit) {
+      progress(`Skipped generated JS: ${skipped.length - previewLimit} more files not shown`);
+    }
+  }
   const fileContents = new Map();
   const allRealFiles = new Set(files.map((file) => path.normalize(file)));
   const virtualFiles = new Map();

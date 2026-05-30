@@ -202,7 +202,8 @@ clean re-analysis and refresh the cache. Use `--no-incremental` to ignore the ca
 
 `analyze` skips generated or minified JavaScript by default. The filter covers obvious vendor/bundle filenames such
 as `.min.js`, `jquery*.js`, `cssWorkerMain.js`, runtime/vendor/chunk bundles, and very large single-line JS files.
-Use `--include-generated` when you intentionally want those files included in the graph.
+Analyze progress prints each skipped file path, reason, and size. Use `--include-generated` when you intentionally
+want those files included in the graph.
 
 `analyze` skips full TypeScript semantic diagnostics by default because they can dominate runtime on large
 projects and do not affect graph generation. Use `--diagnostics` when you explicitly want the TypeScript
