@@ -17,7 +17,7 @@ npm install
 npm run build
 npm pack
 npm uninstall -g vuenexus
-npm install -g ./vuenexus-0.1.7.tgz
+npm install -g ./vuenexus-0.1.8.tgz
 ```
 
 Configure opencode MCP and the VueNexus skill:
@@ -79,6 +79,9 @@ Analyze results are written to:
 /path/to/vue-project/.vuenexus/meta.json
 ~/.vuenexus/registry.json
 ```
+
+If the analyzed project already has a `.gitignore`, `vuenexus analyze` automatically adds `.vuenexus/` once so
+generated graph/cache files do not show up as Git changes.
 
 Quick checks:
 

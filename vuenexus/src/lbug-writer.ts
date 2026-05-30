@@ -438,11 +438,30 @@ async function updateRegistry(repoPath, storagePath, meta, name = path.basename(
   return name;
 }
 
+async function ensureVuenexusGitignore(repoPath) {
+  const gitignorePath = path.join(repoPath, '.gitignore');
+  let text = '';
+  try {
+    text = await fsp.readFile(gitignorePath, 'utf8');
+  } catch {
+    return false;
+  }
+  const hasEntry = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .some((line) => line === '.vuenexus' || line === '.vuenexus/' || line === '/.vuenexus' || line === '/.vuenexus/');
+  if (hasEntry) return false;
+  const prefix = text.length && !text.endsWith('\n') ? '\n' : '';
+  await fsp.writeFile(gitignorePath, `${text}${prefix}.vuenexus/\n`, 'utf8');
+  return true;
+}
+
 export async function writeVueNexusLbug(graph, repoPath, options = {}) {
   repoPath = path.resolve(repoPath);
   const storagePath = path.join(repoPath, '.vuenexus');
   const lbugPath = path.join(storagePath, 'lbug');
   await fsp.mkdir(storagePath, { recursive: true });
+  const gitignoreUpdated = await ensureVuenexusGitignore(repoPath);
   for (const suffix of ['', '.wal', '.lock']) {
     await fsp.rm(lbugPath + suffix, { recursive: true, force: true }).catch(() => {});
   }
@@ -475,7 +494,7 @@ export async function writeVueNexusLbug(graph, repoPath, options = {}) {
     options.registry === false
       ? (options.name ?? path.basename(repoPath))
       : await updateRegistry(repoPath, storagePath, meta, options.name);
-  return { storagePath, lbugPath, meta, registeredName };
+  return { storagePath, lbugPath, meta, registeredName, gitignoreUpdated };
 }
 
 function codeEmbeddingCreateQuery(row) {

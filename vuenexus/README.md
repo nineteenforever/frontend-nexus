@@ -32,7 +32,7 @@ npm run check
 npm test
 npm pack
 npm uninstall -g vuenexus
-npm install -g ./vuenexus-0.1.7.tgz
+npm install -g ./vuenexus-0.1.8.tgz
 ```
 
 VueNexus is implemented in TypeScript and publishes compiled JavaScript from `dist`.
@@ -206,6 +206,9 @@ as `.min.js`, `jquery*.js`, `cssWorkerMain.js`, runtime/vendor/chunk bundles, ve
 any `public/` or `static/` directory found inside a monorepo package. Analyze progress prints each skipped path,
 reason, and size when available. Use `--include-generated` when you intentionally want those files included in the
 graph.
+
+When the analyzed project already has a `.gitignore`, `analyze` automatically adds `.vuenexus/` once so graph,
+cache, and LadybugDB files do not appear as Git changes.
 
 `analyze` skips full TypeScript semantic diagnostics by default because they can dominate runtime on large
 projects and do not affect graph generation. Use `--diagnostics` when you explicitly want the TypeScript
