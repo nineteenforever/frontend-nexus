@@ -1,21 +1,21 @@
 # VueNexus
 
-VueNexus is a Vue-focused graph analyzer for codebase tools and agents.
+VueNexus 是一个面向 Vue 前端项目的代码图谱分析工具，主要给 codebase tools 和 agent 使用。
 
-The npm package name, public command, MCP tool names, storage paths, and registry use the `vuenexus` identity:
+这个包统一使用 `vuenexus` 这个身份：
 
-- CLI command: `vuenexus`
-- MCP tools: `vuenexus_*`
-- local storage: `.vuenexus/lbug`
-- metadata: `.vuenexus/meta.json`
-- global registry: `~/.vuenexus/registry.json`
-- web API: `vuenexus serve`, shaped so the existing GitNexus repo's `gitnexus-web` can browse it
+- CLI 命令：`vuenexus`
+- MCP 工具名：`vuenexus_*`
+- 项目本地存储：`.vuenexus/lbug`
+- 元数据：`.vuenexus/meta.json`
+- 全局 registry：`~/.vuenexus/registry.json`
+- Web API：`vuenexus serve`，接口形状兼容 GitNexus 项目的 `gitnexus-web`
 
-This package does not try to support backend languages. It keeps the scanner small and specialized so Vue/TypeScript frontend graphs can be more precise.
+VueNexus 不追求支持后端多语言。它只专注 Vue/TypeScript 前端项目，让扫描器更小，前端图谱关系更精准。
 
-## Install
+## 安装
 
-VueNexus requires Node.js 20.17 or newer. Node 22 LTS is recommended for internal installs because the local embedding runtime depends on platform-specific ONNX packages.
+VueNexus 要求 Node.js 20.17 或更新版本。内网安装建议使用 Node 22 LTS，因为本地 embedding runtime 依赖平台相关的 ONNX 包。
 
 ```bash
 npm install -g vuenexus
@@ -23,7 +23,7 @@ vuenexus analyze --root /path/to/vue-project --embedding
 vuenexus serve --port 4747
 ```
 
-For local development inside this repo:
+在本仓库本地开发和打包：
 
 ```bash
 npm install
@@ -35,107 +35,109 @@ npm uninstall -g vuenexus
 npm install -g ./vuenexus-0.1.8.tgz
 ```
 
-VueNexus is implemented in TypeScript and publishes compiled JavaScript from `dist`.
+VueNexus 用 TypeScript 实现，npm 包发布的是 `dist` 里的编译后 JavaScript。
 
-## Supported Vue Projects
+## 支持的 Vue 项目
 
-VueNexus is designed for Vue frontend repositories that use:
+VueNexus 面向这些 Vue 前端仓库：
 
-- Vue 2 Options API projects
-- Vue 3 Composition API and `<script setup>` projects
-- `.vue`, `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, and `.cjs` source files
-- TypeScript, JavaScript, TSX, and JSX scripts inside Vue SFCs
-- Pinia and Vuex store patterns
-- Vue Router route objects and lazy component imports
+- Vue 2 Options API 项目
+- Vue 3 Composition API 和 `<script setup>` 项目
+- `.vue`、`.ts`、`.tsx`、`.js`、`.jsx`、`.mjs`、`.cjs` 源码文件
+- Vue SFC 里的 TypeScript、JavaScript、TSX、JSX script
+- Pinia 和 Vuex store 模式
+- Vue Router route object 和懒加载组件 import
 
-## Analyze Pipeline
+## Analyze 流程
 
-`vuenexus analyze` is the core command. The current flow is:
+`vuenexus analyze` 是核心命令。当前流程如下：
 
-1. Walk frontend source files under the project root.
-   - includes `.vue`, `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`
-   - ignores `.git`, `node_modules`, `dist`, `build`, `.nuxt`, `.output`, `coverage`, `.vuenexus`
+1. 扫描项目根目录下的前端源码文件。
+   - 包含 `.vue`、`.ts`、`.tsx`、`.js`、`.jsx`、`.mjs`、`.cjs`
+   - 忽略 `.git`、`node_modules`、`dist`、`build`、`.nuxt`、`.output`、`coverage`、`.vuenexus`
+   - 默认跳过 generated/minified JS，以及任意层级的 `public/`、`static/`
 
-2. Create one `File` node for every scanned source file.
+2. 给每个扫描到的源码文件创建 `File` 节点。
 
-3. Parse Vue SFC files with the official Vue compiler.
-   - `@vue/compiler-sfc` parses `.vue`
-   - every `.vue` file becomes a `Component` node
-   - `<script>` and `<script setup>` are extracted into a virtual `.vue.ts` file
-   - source lines are mapped back from virtual script lines to real `.vue` lines
+3. 使用 Vue 官方 compiler 解析 Vue SFC。
+   - `@vue/compiler-sfc` 解析 `.vue`
+   - 每个 `.vue` 文件生成一个 `Component` 节点
+   - `<script>` 和 `<script setup>` 会被抽成虚拟 `.vue.ts` 文件
+   - 虚拟 script 的行号会映射回真实 `.vue` 文件行号
 
-4. Parse Vue templates with `@vue/compiler-dom`.
-   - component tags such as `<UserCard>` or `<user-card>` become `RENDERS` edges
-   - directive and interpolation expressions become `HANDLES` edges back to script symbols
-   - examples: `@click="save"`, `v-if="visible"`, `:items="items"`, `{{ title }}`
+4. 使用 `@vue/compiler-dom` 解析 Vue template。
+   - `<UserCard>` 或 `<user-card>` 这类组件标签生成 `RENDERS` 边
+   - directive 和 interpolation 表达式生成回 script symbol 的 `HANDLES` 边
+   - 例如 `@click="save"`、`v-if="visible"`、`:items="items"`、`{{ title }}`
 
-5. Build a TypeScript program over real files plus virtual Vue script files.
-   - uses the TypeScript compiler API and checker
-   - resolves imports, symbols, calls, methods, constructors, class methods, object methods, and variable function declarations
-   - `.vue` imports are resolved to their virtual script files while graph nodes still point to the real `.vue` file
+5. 基于真实文件和虚拟 Vue script 文件创建 TypeScript Program。
+   - 默认 `--checker fast`，不对每个 call expression 做昂贵的深度类型解析
+   - import/export、局部调用、Vue SFC、template、route、Pinia/Vuex、mixin 主要靠 AST-first 规则解析
+   - `.vue` import 会解析到虚拟 script 文件，但图谱节点仍指向真实 `.vue`
 
-6. Collect declaration nodes.
-   - functions and arrow-function variables
-   - composables named like `useXxx`
-   - Pinia stores from `defineStore` or store files
-   - routers from `createRouter`
-   - classes, interfaces, methods
-   - class property methods such as `private submit = () => {}`
-   - variables and destructured variables
+6. 收集声明节点。
+   - function 和 arrow-function variable
+   - `useXxx` 风格 composable
+   - `defineStore` 或 store 文件里的 Pinia store
+   - `createRouter` router
+   - class、interface、method
+   - `private submit = () => {}` 这类 class property method
+   - variable 和 destructured variable
 
-7. Collect graph edges.
-   - `DEFINES`: file contains a declaration
-   - `IMPORTS`: static and dynamic imports, including external packages and local assets
-   - `CALLS`: TypeScript-resolved function/method/constructor calls
-   - `RENDERS`: Vue template component usage
-   - `HANDLES`: Vue template expressions referencing script symbols
-   - `ROUTES_TO`: Vue Router route objects pointing to components
-   - `USES_STORE`: Pinia store usage and store action calls
-   - `MIXES_IN`: Vue 2 `mixins` and `extends`
-   - `HAS_UNRESOLVED`: an owner/file has an actionable unresolved relation
+7. 收集图谱边。
+   - `DEFINES`：文件包含声明
+   - `IMPORTS`：静态 import、动态 import、外部包、本地资源
+   - `CALLS`：函数、方法、构造器调用
+   - `RENDERS`：Vue template 组件使用
+   - `HANDLES`：Vue template 表达式引用 script symbol
+   - `ROUTES_TO`：Vue Router route 指向组件
+   - `USES_STORE`：Pinia/Vuex store 使用和 action 调用
+   - `MIXES_IN`：Vue 2 `mixins` 和 `extends`
+   - `HAS_UNRESOLVED`：某个 owner/file 下存在值得 agent 注意的未解析关系
 
-8. Apply Vue/frontend-specific precision rules.
-   - `this.foo()` prefers real same-class/same-file method nodes over class nodes
-   - `store.action()` links to the Pinia store action method when the store variable is known
-   - Vuex `mapState`, `mapGetters`, `mapActions`, `mapMutations`, `dispatch`, and `commit` are resolved when the store module can be identified
-   - Vue 2 Options API props, data, computed, methods, inline components, mixins, and component names are indexed
-   - `tsconfig`/`jsconfig`, common Vite/Webpack aliases, package self-imports, `src` directory aliases, barrel re-exports, and Vue component casing are resolved before a relation is marked unresolved
-   - route objects are recognized only in route-like contexts, not every object with a `path`
-   - type-only/interface callback signatures are filtered out from `CALLS`
-   - variable initializer calls also get an edge from the variable node, useful for computed/composable chains
-   - third-party packages become `ExternalModule` nodes instead of `UnresolvedReference`
+8. 应用 Vue/前端专用精度规则。
+   - `this.foo()` 优先匹配真实同类/同文件 method，而不是 class 节点
+   - `store.action()` 在 store 变量已知时链接到 Pinia store action method
+   - Vuex `mapState`、`mapGetters`、`mapActions`、`mapMutations`、`dispatch`、`commit` 尽量解析到 store/module/action
+   - Vue 2 Options API 的 props、data、computed、methods、inline components、mixins、component names 会被索引
+   - `tsconfig`/`jsconfig`、常见 Vite/Webpack alias、package self-import、`src` 目录 alias、barrel re-export、Vue 组件大小写会先解析，解析失败才标记 unresolved
+   - route object 只在 route-like 上下文识别，不会把所有带 `path` 的对象都当路由
+   - type-only/interface callback signature 不会误生成 `CALLS`
+   - 变量 initializer call 也会从变量节点补一条边，便于 computed/composable 链路追踪
+   - 第三方包会变成 `ExternalModule` 节点，而不是 `UnresolvedReference`
 
-9. Write the graph to LadybugDB.
-   - graph database: `.vuenexus/lbug`
-   - metadata: `.vuenexus/meta.json`
-   - registry entry: `~/.vuenexus/registry.json`
+9. 写入 LadybugDB。
+   - 图数据库：`.vuenexus/lbug`
+   - 元数据：`.vuenexus/meta.json`
+   - 全局 registry：`~/.vuenexus/registry.json`
 
-10. Return analysis stats and diagnostics.
-    - diagnostics include TypeScript diagnostics, Vue parse diagnostics, and safe fallback warnings
-    - diagnostics help reveal unresolved library/shim gaps or TypeScript checker fallback points
-    - diagnostics do not automatically mean the graph failed
-    - if TypeScript semantic resolution overflows on complex project types, analyze falls back to AST/local resolution and records a diagnostic instead of aborting
+10. 返回分析统计和 diagnostics。
+    - diagnostics 包含 Vue parse diagnostic、TypeScript diagnostic、fallback warning
+    - diagnostics 用于暴露 unresolved library/shim 或 checker fallback 点
+    - diagnostics 不等于图谱失败
 
-## Storage Format
+## 存储格式
 
-The storage format is VueNexus-native while preserving the LadybugDB graph shape consumed by the existing web UI.
+VueNexus 使用自己的前端图谱语义，同时保持 GitNexus Web 能消费的 LadybugDB graph shape。
 
-Project-local files:
+项目本地文件：
 
 ```text
 <project>/.vuenexus/lbug
 <project>/.vuenexus/meta.json
+<project>/.vuenexus/cache/analysis-cache.json
+<project>/.vuenexus/cache/files/
 ```
 
-Global registry:
+全局 registry：
 
 ```text
 ~/.vuenexus/registry.json
 ```
 
-LadybugDB node labels use the existing web graph schema where possible:
+LadybugDB 节点 label 尽量复用现有 Web 图谱 schema：
 
-| Frontend concept | Stored label |
+| 前端概念 | 存储 label |
 | --- | --- |
 | `File` | `File` |
 | `Component` | `Class` |
@@ -151,11 +153,11 @@ LadybugDB node labels use the existing web graph schema where possible:
 | `Interface` | `Interface` |
 | `Variable` | `Variable` |
 
-Frontend-specific node type information is preserved in the `description` JSON as `frontendType`.
+前端原始节点类型会保存在 `description` JSON 的 `frontendType` 字段里。
 
-`UnresolvedReference` is reserved for actionable graph gaps after local resolvers have been tried. It should not contain ordinary third-party imports.
+`UnresolvedReference` 只用于记录本地 resolver 尝试后仍未解析、且对影响面分析有意义的图谱缺口。普通第三方依赖不会放进 unresolved。
 
-Relationships are stored in `CodeRelation`:
+关系统一存储为 `CodeRelation`：
 
 ```text
 source -[:CodeRelation {
@@ -166,11 +168,11 @@ source -[:CodeRelation {
 }]-> target
 ```
 
-`step` is the source line number where the relation was found.
+`step` 是发现关系的源码行号。
 
 ## CLI
 
-Analyze and serve:
+分析并启动服务：
 
 ```bash
 vuenexus analyze --root /path/to/vue-project --name my-vue-app --embedding
@@ -185,36 +187,61 @@ vuenexus serve --port 4747
 vuenexus ui --server http://127.0.0.1:4747 --ui-dir /path/to/frontend-nexus/vuenexus-web/dist
 ```
 
-By default, `analyze` writes lightweight stage progress to stderr and the final JSON result to stdout. The progress
-messages are phase-level only, not per-file, so they are useful on large projects without materially slowing analysis.
-Use `--json` for machine-readable output with no progress logs, or `--quiet` to suppress progress logs.
+默认情况下，`analyze` 把阶段进度写到 stderr，把最终 JSON 结果写到 stdout。进度是阶段级的，不是逐文件刷屏，因此大项目里也不会明显拖慢分析。需要机器可读输出时用 `--json`；需要安静模式时用 `--quiet`。
 
-`analyze` defaults to `--checker fast`. Fast mode avoids expensive TypeScript checker calls for every call
-expression, so large Vue projects do not get stuck in deep dependency/type graphs. It still resolves Vue SFC,
-import/export, local calls, Vue template edges, routes, Pinia/Vuex relations, mixins, and common same-file calls.
-Use `--checker full` only when you need maximum TypeScript call-target resolution and can accept slower analysis.
-Use `--checker off` for the most conservative AST/local-only run.
+`analyze` 默认是 `--checker fast`。fast 模式避免对每个调用表达式触发昂贵的 TypeScript checker 调用，避免大 Vue 项目卡在复杂依赖/类型图里。它仍会解析 Vue SFC、import/export、本地调用、template 边、route、Pinia/Vuex、mixin 和常见同文件调用。
 
-`analyze` uses incremental analysis by default. The cache stores a small manifest at
-`.vuenexus/cache/analysis-cache.json` and per-file graph slices under `.vuenexus/cache/files/`. On the next run,
-VueNexus reuses unchanged file slices and re-analyzes changed files plus files that import them. Use `-f` or
-`--force` to do a full clean re-analysis and refresh the cache. Use `--no-incremental` to ignore the cache for a
-single run.
+只在你确实需要更深 TypeScript 调用目标解析时使用：
 
-`analyze` skips generated or minified JavaScript by default. The filter covers obvious vendor/bundle filenames such
-as `.min.js`, `jquery*.js`, `cssWorkerMain.js`, runtime/vendor/chunk bundles, very large single-line JS files, and
-any `public/` or `static/` directory found inside a monorepo package. Analyze progress prints each skipped path,
-reason, and size when available. Use `--include-generated` when you intentionally want those files included in the
-graph.
+```bash
+vuenexus analyze --checker full
+```
 
-When the analyzed project already has a `.gitignore`, `analyze` automatically adds `.vuenexus/` once so graph,
-cache, and LadybugDB files do not appear as Git changes.
+最保守的 AST/local-only 模式：
 
-`analyze` skips full TypeScript semantic diagnostics by default because they can dominate runtime on large
-projects and do not affect graph generation. Use `--diagnostics` when you explicitly want the TypeScript
-diagnostic report alongside the graph.
+```bash
+vuenexus analyze --checker off
+```
 
-Inspect the stored graph:
+`analyze` 默认使用增量缓存。缓存包含一个小 manifest 和每文件图谱切片：
+
+```text
+.vuenexus/cache/analysis-cache.json
+.vuenexus/cache/files/
+```
+
+下次运行时，未变化文件会复用切片；变化文件和 import 它们的文件会重新分析。
+
+全量重跑并刷新缓存：
+
+```bash
+vuenexus analyze -f
+vuenexus analyze --force
+```
+
+本次忽略缓存：
+
+```bash
+vuenexus analyze --no-incremental
+```
+
+`analyze` 默认跳过 generated/minified JavaScript 和静态目录。规则覆盖 `.min.js`、`jquery*.js`、`cssWorkerMain.js`、runtime/vendor/chunk bundle、超长单行 JS，以及 monorepo 任意层级下的 `public/` 和 `static/`。进度会打印跳过路径、原因和大小。
+
+确实需要分析这些文件时：
+
+```bash
+vuenexus analyze --include-generated
+```
+
+如果项目根目录已有 `.gitignore`，`analyze` 会自动追加一次 `.vuenexus/`，避免 graph/cache/LadybugDB 文件出现在 Git changes 里。
+
+默认不收集完整 TypeScript semantic diagnostics，因为它们在大项目里可能非常慢，而且不影响图谱生成。只有明确需要诊断报告时使用：
+
+```bash
+vuenexus analyze --diagnostics
+```
+
+检查已存图谱：
 
 ```bash
 vuenexus stats --db /path/to/vue-project/.vuenexus/lbug
@@ -228,31 +255,31 @@ vuenexus embed --db /path/to/vue-project/.vuenexus/lbug --provider local --model
 vuenexus semantic --db /path/to/vue-project/.vuenexus/lbug --query "用户登录表单" --limit 10
 ```
 
-Run MCP:
+启动 MCP：
 
 ```bash
 vuenexus mcp
 ```
 
-Set up opencode:
+配置 opencode：
 
 ```bash
 vuenexus setup
 ```
 
-By default this installs:
+默认会安装：
 
-- MCP config in `~/.config/opencode/opencode.json`
-- skill file in `~/.config/opencode/skill/vuenexus/SKILL.md`
+- MCP 配置：`~/.config/opencode/opencode.json`
+- skill 文件：`~/.config/opencode/skill/vuenexus/SKILL.md`
 
-On Windows, `~` is the user profile directory, so the default paths are usually:
+Windows 上 `~` 通常是用户目录，所以默认路径类似：
 
 ```text
 C:\Users\<you>\.config\opencode\opencode.json
 C:\Users\<you>\.config\opencode\skill\vuenexus\SKILL.md
 ```
 
-The MCP entry added to opencode is:
+写入 opencode 的 MCP 配置：
 
 ```json
 {
@@ -266,55 +293,55 @@ The MCP entry added to opencode is:
 }
 ```
 
-`vuenexus mcp` defaults to the current workspace's `.vuenexus/lbug`, so the MCP config normally does not need
-`--db`. Use `vuenexus setup --db /absolute/path/to/.vuenexus/lbug` only when your agent starts MCP servers from a
-different working directory.
+`vuenexus mcp` 默认读取当前工作目录下的 `.vuenexus/lbug`，因此 MCP 配置通常不需要 `--db`。只有当 agent 从项目外部目录启动 MCP server 时，才需要：
 
-For a project-local opencode config:
+```bash
+vuenexus setup --db /absolute/path/to/.vuenexus/lbug
+```
+
+项目级 opencode 配置：
 
 ```bash
 vuenexus setup --scope project
 ```
 
-## MCP Tools
+## MCP 工具
 
-The MCP server exposes VueNexus-style tool names:
+MCP server 暴露这些 VueNexus 风格工具名：
 
-- `vuenexus_query`: search indexed nodes
-- `vuenexus_semantic_search`: semantic search interface
-- `vuenexus_graph`: direct graph slice around a symbol or node id
-- `vuenexus_context`: incoming and outgoing relations for one symbol
-- `vuenexus_call_chain`: breadth-first traversal over `CALLS`, `RENDERS`, and `HANDLES`
-- `vuenexus_unresolved_report`: grouped unresolved references that may hide impact
-- `vuenexus_impact_radius`: reverse impact slice with unresolved blockers and a `complete`/`partial` confidence flag
-- `vuenexus_cypher`: run Cypher-compatible queries against LadybugDB
-- `vuenexus_stats`: node and edge totals
-- `vuenexus_export`: full graph export
+- `vuenexus_query`：搜索已索引节点
+- `vuenexus_semantic_search`：语义搜索接口
+- `vuenexus_graph`：围绕 symbol 或 node id 获取图谱切片
+- `vuenexus_context`：获取一个 symbol 的入边和出边上下文
+- `vuenexus_call_chain`：沿 `CALLS`、`RENDERS`、`HANDLES` 做 BFS 遍历
+- `vuenexus_unresolved_report`：按类型聚合 unresolved references
+- `vuenexus_impact_radius`：反向影响面分析，包含 unresolved blocker 和 `complete`/`partial` 置信标记
+- `vuenexus_cypher`：对 LadybugDB 执行 Cypher-compatible 查询
+- `vuenexus_stats`：节点和边统计
+- `vuenexus_export`：导出完整图谱
 
-## GitNexus Web Compatibility
+## GitNexus Web 兼容
 
-After `vuenexus analyze`, run:
+执行 `vuenexus analyze` 后启动：
 
 ```bash
 vuenexus serve --port 4747
 ```
 
-The server reads `~/.vuenexus/registry.json`, opens each repo's `.vuenexus/lbug`, and exposes the same HTTP endpoint shapes expected by the GitNexus repo's `gitnexus-web`:
+server 会读取 `~/.vuenexus/registry.json`，打开每个 repo 的 `.vuenexus/lbug`，并暴露 GitNexus 仓库里的 `gitnexus-web` 期望的 HTTP endpoint：
 
 ```text
 /api/repos
 /api/graph?repo=<repo-name>
 ```
 
-This lets the existing `gitnexus-web` app consume VueNexus results without changing the web UI.
+这让现有 `gitnexus-web` 可以不改 UI 直接消费 VueNexus 结果。
 
-## Browser UI
+## 浏览器 UI
 
-The browser UI lives in the sibling `vuenexus-web` project, not inside the npm CLI package. This keeps
-`vuenexus` focused on analyze/storage/MCP/API work, while `vuenexus-web` works like `gitnexus-web`: a standalone
-frontend project that connects to a running `vuenexus serve` API.
+浏览器 UI 在同级 `vuenexus-web` 项目里，不打进 CLI npm 包。这样 `vuenexus` 专注 analyze/storage/MCP/API，`vuenexus-web` 像 `gitnexus-web` 一样作为独立前端项目连接 `vuenexus serve`。
 
-Run the UI during development:
+开发时启动 UI：
 
 ```bash
 cd /path/to/frontend-nexus/vuenexus-web
@@ -322,52 +349,62 @@ npm install
 npm run dev
 ```
 
-Typical local workflow:
+典型本地流程：
 
 ```bash
 vuenexus analyze --root /path/to/vue-project
 vuenexus serve --port 3000
 ```
 
-Then open:
+打开：
 
 ```text
 http://127.0.0.1:5173
 ```
 
-Enter `http://127.0.0.1:3000` in the server input. `vuenexus serve` provides the graph API. `vuenexus-web`
-provides the browser experience.
+在页面 server input 中填：
 
-For a production static build, run `npm run build` in `vuenexus-web`. The legacy helper command can serve that
-build when useful:
+```text
+http://127.0.0.1:3000
+```
+
+`vuenexus serve` 提供图谱 API，`vuenexus-web` 提供浏览器交互体验。
+
+如果需要静态构建，在 `vuenexus-web` 里运行：
+
+```bash
+npm run build
+```
+
+必要时可以用 legacy helper command 托管这个 build：
 
 ```bash
 vuenexus ui --port 5173 --server http://127.0.0.1:3000 --ui-dir /path/to/frontend-nexus/vuenexus-web/dist
 ```
 
-The UI can:
+UI 能做：
 
-- connect to a local or remote VueNexus server
-- list analyzed repos from `~/.vuenexus/registry.json`
-- stream graph data from `/api/graph?stream=true`
-- render nodes and edges on a canvas
-- search symbols/files/components
-- inspect direct relationships for a selected node
+- 连接本地或远端 VueNexus server
+- 从 `~/.vuenexus/registry.json` 列出已分析 repo
+- 从 `/api/graph?stream=true` 流式读取图谱
+- 在 canvas 上渲染节点和边
+- 搜索 symbol/file/component
+- 查看选中节点的直接关系
 
-## Embeddings
+## Embedding
 
-Embedding does not affect graph precision.
+Embedding 不影响图谱精度。
 
-Graph generation is entirely parser/checker based. `CALLS`, `RENDERS`, `HANDLES`, `ROUTES_TO`, and other edges are created before any vector step and do not depend on embeddings.
+图谱生成完全基于 parser/checker。`CALLS`、`RENDERS`、`HANDLES`、`ROUTES_TO` 等边在任何向量步骤之前就已经生成，不依赖 embedding。
 
-`--embedding` now writes vectors into the same LadybugDB store:
+`--embedding` 会把向量写入同一个 LadybugDB：
 
-- embedding nodes are stored in `CodeEmbedding`
-- each row keeps `nodeId`, `chunkIndex`, `startLine`, `endLine`, `embedding`, and `contentHash`
-- `.vuenexus/meta.json` records embedding provider, model, vector dimensions, and embedding count
-- `~/.vuenexus/registry.json` gets the updated embedding count for web/API consumers
+- embedding 节点存储在 `CodeEmbedding`
+- 每行包含 `nodeId`、`chunkIndex`、`startLine`、`endLine`、`embedding`、`contentHash`
+- `.vuenexus/meta.json` 记录 embedding provider、model、vector dimensions、embedding count
+- `~/.vuenexus/registry.json` 会更新 embedding count，供 Web/API 消费
 
-Offline local model usage:
+离线本地模型用法：
 
 ```bash
 vuenexus analyze \
@@ -377,23 +414,22 @@ vuenexus analyze \
   --model /absolute/path/to/local/embedding-model
 ```
 
-The local provider uses `@huggingface/transformers` and is configured for offline operation by default.
-When a model is bundled into the npm package at `models/embedding`, this also works without `--model`:
+local provider 使用 `@huggingface/transformers`，默认离线运行。如果模型已经打包在 npm 包的 `models/embedding` 下，可以不传 `--model`：
 
 ```bash
 vuenexus analyze --root /path/to/vue-project --embedding
 vuenexus model-info
 ```
 
-Model resolution order for `provider=local`:
+`provider=local` 的模型解析顺序：
 
 1. `--model /absolute/model/dir`
 2. `VUENEXUS_LOCAL_EMBEDDING_MODEL`
-3. package-bundled `models/embedding`
-4. `--model-package <npm-package>` or `VUENEXUS_LOCAL_EMBEDDING_MODEL_PACKAGE`
-5. known model packages such as `@vuenexus/embedding-model`
+3. 包内置 `models/embedding`
+4. `--model-package <npm-package>` 或 `VUENEXUS_LOCAL_EMBEDDING_MODEL_PACKAGE`
+5. 已知模型包，例如 `@vuenexus/embedding-model`
 
-A bundled model directory must be a Transformers.js feature-extraction model, typically:
+打包模型目录必须是 Transformers.js feature-extraction 模型，通常包含：
 
 ```text
 models/embedding/config.json
@@ -401,10 +437,10 @@ models/embedding/tokenizer.json
 models/embedding/onnx/model_quantized.onnx
 ```
 
-For an internal npm release:
+内网 npm 发布方式：
 
 ```bash
-# copy/export model files before publishing
+# 发布前复制/导出模型文件
 mkdir -p models/embedding
 # models/embedding/config.json, tokenizer.json, onnx/model_quantized.onnx, ...
 
@@ -414,7 +450,7 @@ vuenexus model-info
 vuenexus analyze --root /path/to/vue-project --embedding
 ```
 
-If the model is too large for the main package, publish a companion package with this `package.json` field:
+如果模型太大，不适合放进主包，可以发一个 companion package，并在 `package.json` 写：
 
 ```json
 {
@@ -427,71 +463,75 @@ If the model is too large for the main package, publish a companion package with
 }
 ```
 
-Then install and use it:
+安装并使用：
 
 ```bash
 npm install -g vuenexus @your-scope/vuenexus-embedding-model --registry http://your-internal-npm/
 vuenexus analyze --root /path/to/vue-project --embedding --model-package @your-scope/vuenexus-embedding-model
 ```
 
-Environment variables:
+环境变量：
 
 - `VUENEXUS_LOCAL_EMBEDDING_MODEL=/absolute/path/to/local/model`
 - `VUENEXUS_LOCAL_EMBEDDING_MODEL_PACKAGE=@your-scope/vuenexus-embedding-model`
 - `VUENEXUS_TRANSFORMERS_CACHE=/absolute/path/to/cache`
-- `VUENEXUS_ALLOW_REMOTE_MODELS=1` only if you explicitly want to allow network model loading
+- `VUENEXUS_ALLOW_REMOTE_MODELS=1`，只在你明确允许网络加载模型时设置
 
-For internal networks, keep `VUENEXUS_ALLOW_REMOTE_MODELS` unset and pass a local model path. The local runtime must have the model files and the platform's `onnxruntime-node` binary available before running.
+内网环境应保持 `VUENEXUS_ALLOW_REMOTE_MODELS` 未设置，并传本地模型路径。运行前需要确保模型文件和当前平台的 `onnxruntime-node` 二进制都可用。
 
-Other providers:
+其他 provider：
 
 ```bash
 vuenexus analyze --root /path/to/vue-project --embedding --provider http --model bge --name my-vue-app
 vuenexus analyze --root /path/to/vue-project --embedding --provider hash
 ```
 
-`http` expects an OpenAI-compatible embedding endpoint:
+`http` 需要 OpenAI-compatible embedding endpoint：
 
 - `VUENEXUS_EMBEDDING_URL`
 - `VUENEXUS_EMBEDDING_MODEL`
-- `VUENEXUS_EMBEDDING_API_KEY` if the endpoint requires auth
+- `VUENEXUS_EMBEDDING_API_KEY`，如果 endpoint 需要鉴权
 
-`hash` is a deterministic offline fallback for tests and smoke checks. It is not a semantic model.
+`hash` 是 deterministic offline fallback，只适合测试和 smoke check，不是语义模型。
 
-So when validating graph correctness, it is safe to skip vectorization. Vector search is a retrieval feature for agents; it is not used to decide graph edges.
+所以验证图谱正确性时，可以先跳过向量化。向量搜索是给 agent 的检索能力，不参与边关系生成。
 
-## Implemented Features
+## 已实现能力
 
-- Vue SFC parsing with official Vue compiler packages
-- virtual `.vue.ts` script files for TypeScript checker integration
-- line mapping from virtual Vue script back to real `.vue` files
-- precise TypeScript symbol and call resolution
-- Vue template `RENDERS` and `HANDLES` extraction
-- Vue Router route-to-component edges
-- Pinia store usage and store action call edges
-- class method and class property method support
-- composable detection
-- LadybugDB graph writing
-- LadybugDB `CodeEmbedding` vector writing
-- local/offline embedding model support through `@huggingface/transformers`
-- semantic search over stored LadybugDB embeddings
-- VueNexus registry writing
-- GitNexus web-compatible HTTP server
-- CLI graph inspection commands
-- MCP server with `vuenexus_*` tools
-- frontend-specific Codex skill under `skills/vuenexus`
+- 使用 Vue 官方 compiler 解析 Vue SFC
+- 虚拟 `.vue.ts` script 文件
+- 虚拟 Vue script 行号映射回真实 `.vue`
+- AST-first 的 import/export、本地调用、Vue 关系解析
+- 可选 TypeScript checker full 模式
+- Vue template `RENDERS` 和 `HANDLES`
+- Vue Router route-to-component
+- Pinia store usage 和 store action call
+- Vuex map helper、dispatch、commit 解析
+- class method 和 class property method
+- composable 检测
+- generated/minified JS 与 public/static 静态目录过滤
+- 增量分析缓存
+- LadybugDB 图谱写入
+- LadybugDB `CodeEmbedding` 向量写入
+- 通过 `@huggingface/transformers` 支持本地/离线 embedding 模型
+- 存储 embedding 后的语义搜索
+- VueNexus registry 写入
+- GitNexus Web 兼容 HTTP server
+- CLI 图谱检查命令
+- MCP server，工具名为 `vuenexus_*`
+- 前端专用 Codex skill：`skills/vuenexus`
 
-## Verified Projects
+## 已验证项目
 
-The scanner has been tested against local fixtures and real Vue projects:
+扫描器已经在本地 fixture 和真实 Vue 项目上验证过：
 
 - `vuestic-admin`
-  - verified Vue component count, route edges, Pinia store action calls, and long call chains
+  - 验证过 Vue component 数量、route 边、Pinia store action call、长调用链
 - `vue-vben-admin/packages/@core/ui-kit`
-  - 338 scanned files
-  - 2842 nodes
-  - 4243 edges
-  - verified a long chain from Vue template event to class methods:
+  - 338 个扫描文件
+  - 2842 个节点
+  - 4243 条边
+  - 验证过从 Vue template event 到 class methods 的长链路：
 
 ```text
 vben-use-form.vue @keydown.enter
@@ -505,10 +545,10 @@ vben-use-form.vue @keydown.enter
 -> FormApi.processFields
 ```
 
-## Current Limits
+## 当前限制
 
-- This is Vue/frontend-only by design.
-- Full monorepo analysis can still be slow on cold cache; prefer package-level roots for the first run, keep generated/static filtering enabled, then use the default incremental cache for repeated analysis.
-- Template expression extraction links identifier references, but it does not execute Vue runtime behavior.
-- Third-party component internals are only linked when their source exists inside the analyzed root.
-- Embedding storage is available, but graph precision remains parser/checker based and independent from vector search.
+- 设计上只支持 Vue/frontend，不支持后端多语言。
+- 大型 monorepo 冷缓存首次分析仍可能慢；建议首次先按 package root 分析，保持 generated/static 过滤开启，后续依赖默认增量缓存。
+- template expression 抽取会链接 identifier reference，但不会执行 Vue runtime 行为。
+- 第三方组件内部只有源码在分析 root 内时才会继续链接。
+- embedding 存储已支持，但图谱精度仍由 parser/checker 决定，和向量搜索无关。
