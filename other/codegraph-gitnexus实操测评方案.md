@@ -100,6 +100,7 @@ repos:
     path: /absolute/path/to/example-service
     commit: abc123
     size_bucket: small | medium | large
+    project_type: java | vue | go | python | node | other
     loc: 12000
     files: 180
     languages:
@@ -444,6 +445,7 @@ metrics:
 | tool 返回字符数 | MCP 结果越长，token 越高 |
 | final answer 字符数 | 输出 token 近似 |
 | 上下文轮次 | 多轮探索通常 token 更高 |
+| tool calls 数 | 工具调用越多，通常说明探索步骤越多，也可能增加上下文和延迟 |
 
 ## 9. 评分方法
 
@@ -464,6 +466,7 @@ accuracy_score = 0.6 * fact_recall + 0.4 * fact_precision
 ```text
 file_read_saving = (baseline_file_reads - arm_file_reads) / baseline_file_reads
 search_saving = (baseline_search_calls - arm_search_calls) / baseline_search_calls
+tool_call_saving = (baseline_tool_calls - arm_tool_calls) / baseline_tool_calls
 time_saving = (baseline_answer_time - arm_answer_time) / baseline_answer_time
 ```
 
@@ -519,6 +522,7 @@ repo-results/<repo_id>/repo-report.md
 - path:
 - commit:
 - size_bucket:
+- project_type:
 - languages:
 - files:
 - loc:
@@ -537,11 +541,11 @@ repo-results/<repo_id>/repo-report.md
 
 ## 4. 总分对比
 
-| 实验臂 | 平均质量分 | 平均耗时 | 平均文件读取 | 平均搜索次数 | 平均工具调用 | token/代理 token | 相对 Baseline 结论 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| Baseline | | | | | | | 基线 |
-| codegraph | | | | | | | |
-| GitNexus | | | | | | | |
+| 实验臂 | 平均质量分 | 平均耗时 | 平均文件读取 | 平均搜索次数 | 平均工具调用 | 平均工具调用节约 | token/代理 token | 相对 Baseline 结论 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Baseline | | | | | | 0% | | 基线 |
+| codegraph | | | | | | | | |
+| GitNexus | | | | | | | | |
 
 ## 5. 分任务结果
 
@@ -588,14 +592,36 @@ benchmark-cg-gn/aggregate/aggregate-report.md
 
 综合表：
 
-| 规模 | 工具 | 平均质量增益 | 平均时间节约 | 平均文件读取节约 | 平均 token 节约 | 成功率 | 结论 |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| 小型 | codegraph | | | | | | |
-| 小型 | GitNexus | | | | | | |
-| 中型 | codegraph | | | | | | |
-| 中型 | GitNexus | | | | | | |
-| 大型 | codegraph | | | | | | |
-| 大型 | GitNexus | | | | | | |
+### 11.1 按仓库明细汇总
+
+| 仓库 | 项目类型 | 主要语言 | 规模 | 工具 | 质量增益 | 时间节约 | 文件读取节约 | 搜索次数节约 | tool calls 节约 | token/代理 token 节约 | 成功率 | 结论 |
+| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| repo_001 | vue | TypeScript/Vue | 中型 | codegraph | | | | | | | | |
+| repo_001 | vue | TypeScript/Vue | 中型 | GitNexus | | | | | | | | |
+| repo_002 | java | Java | 中型 | codegraph | | | | | | | | |
+| repo_002 | java | Java | 中型 | GitNexus | | | | | | | | |
+
+### 11.2 按项目类型汇总
+
+| 项目类型 | 主要语言 | 工具 | 平均质量增益 | 平均时间节约 | 平均文件读取节约 | 平均搜索次数节约 | 平均 tool calls 节约 | 平均 token/代理 token 节约 | 成功率 | 结论 |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| vue | TypeScript/Vue | codegraph | | | | | | | | |
+| vue | TypeScript/Vue | GitNexus | | | | | | | | |
+| java | Java | codegraph | | | | | | | | |
+| java | Java | GitNexus | | | | | | | | |
+| go | Go | codegraph | | | | | | | | |
+| go | Go | GitNexus | | | | | | | | |
+
+### 11.3 按规模汇总
+
+| 规模 | 工具 | 平均质量增益 | 平均时间节约 | 平均文件读取节约 | 平均搜索次数节约 | 平均 tool calls 节约 | 平均 token/代理 token 节约 | 成功率 | 结论 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 小型 | codegraph | | | | | | | | |
+| 小型 | GitNexus | | | | | | | | |
+| 中型 | codegraph | | | | | | | | |
+| 中型 | GitNexus | | | | | | | | |
+| 大型 | codegraph | | | | | | | | |
+| 大型 | GitNexus | | | | | | | | |
 
 最终回答：
 
@@ -604,6 +630,8 @@ benchmark-cg-gn/aggregate/aggregate-report.md
 3. `GitNexus` 是否在模块理解、workflow、风险识别上更强。
 4. `GitNexus` 的额外索引和维护成本是否值得。
 5. 小/中/大型仓库是否有不同结论。
+6. Java、Vue、Go 等不同项目类型上的收益是否不同。
+7. 平均 tool calls 是否减少，减少的是无效探索，还是只是把文件读取替换成工具查询。
 
 ## 12. 推荐判定规则
 
@@ -670,4 +698,3 @@ benchmark-cg-gn/aggregate/aggregate-report.md
 - 是否节约 token 或代理 token。
 - 是否降低幻觉并提高证据质量。
 ```
-
